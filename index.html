@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
-<title>Xem KMZ</title>
+<title>P.QLDA1 GIS Ultra HD</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Roboto,"Segoe UI",sans-serif;background:#cfd8dc;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
@@ -116,7 +116,9 @@ const cv=$('c'), ctx0=cv.getContext('2d'); let ctx=ctx0;
 let VC=null, vcTimer=0, heavy=false, vcMode='auto'; /* VC = ảnh lớp phủ vẽ sẵn của dữ liệu vector */
 const PI=Math.PI;
 let W=0,H=0,DPR=1;
-const view={cx:0.79,cy:0.455,z:5.5};
+const view={cx:0.79,cy:0.455,z:5.5,rot:0};
+function unrotate(x,y){const a=-view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
+function rotateXY(x,y){const a=view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
 let dirty=false;
 function redraw(){ if(!dirty){ dirty=true; requestAnimationFrame(draw); } }
 
@@ -172,8 +174,9 @@ const BASES=[
   {id:'none',name:'Nền trắng',url:null,max:19,attr:''}
 ];
 let baseIdx=0, labelsOn=true, showNames=true, kttId='105.75', hdOn=true;
-try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
-function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,v:vcMode})); }catch(e){} }
+let ultraLevel=1, imgContrast=105, imgBright=100, imgSat=108, imgSmooth=true;
+try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(Number.isFinite(s.ul)) ultraLevel=clamp(s.ul,0,2); if(Number.isFinite(s.ct)) imgContrast=clamp(s.ct,80,160); if(Number.isFinite(s.br)) imgBright=clamp(s.br,70,140); if(Number.isFinite(s.sa)) imgSat=clamp(s.sa,70,160); if(typeof s.sm==='boolean') imgSmooth=s.sm; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
+function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,ul:ultraLevel,ct:imgContrast,br:imgBright,sa:imgSat,sm:imgSmooth,v:vcMode})); }catch(e){} }
 
 /* ---------- VN2000 ⇄ WGS84 ----------
    Elipxoit WGS84; tham số 7 phép chuyển VN-2000 → WGS 84 theo EPSG:6960
@@ -237,7 +240,8 @@ function drawTileLayer(layer,fallback,zoff){
   /* zoff = 1: chế độ nét cao, tải ảnh chi tiết hơn một mức cho màn hình mật độ điểm ảnh cao */
   const tz=clamp(Math.round(view.z+(zoff||0)),0,layer.max);
   const n=1<<tz, S=SC(), ts=256*Math.pow(2,view.z-tz);
-  const left=view.cx-W/2/S, right=view.cx+W/2/S, top=view.cy-H/2/S, bot=view.cy+H/2/S;
+  const radius=Math.hypot(W,H)/2;
+  const left=view.cx-radius/S, right=view.cx+radius/S, top=view.cy-radius/S, bot=view.cy+radius/S;
   const x0=Math.floor(left*n), x1=Math.floor(right*n);
   const y0=Math.max(0,Math.floor(top*n)), y1=Math.min(n-1,Math.floor(bot*n));
   for(let tx=x0;tx<=x1;tx++){
@@ -681,16 +685,17 @@ function fitBB(bb,pad,maxZ){
 function clampView(){ view.cy=clamp(view.cy,0,1); view.cx=clamp(view.cx,0,1); view.z=clamp(view.z,0,MAXZ); }
 function zoomAt(x,y,nz){
   nz=clamp(nz,0,MAXZ);
-  const S0=SC(), wx=view.cx+(x-W/2)/S0, wy=view.cy+(y-H/2)/S0;
+  const [ux,uy]=unrotate(x,y);
+   const S0=SC(), wx=view.cx+(ux-W/2)/S0, wy=view.cy+(uy-H/2)/S0;
   view.z=nz; const S1=SC();
-  view.cx=wx-(x-W/2)/S1; view.cy=wy-(y-H/2)/S1; clampView(); redraw();
+  view.cx=wx-(ux-W/2)/S1; view.cy=wy-(uy-H/2)/S1; clampView(); redraw();
 }
-const s2w=(sx,sy)=>{ const S=SC(); return [view.cx+(sx-W/2)/S, view.cy+(sy-H/2)/S]; };
+const s2w=(sx,sy)=>{ const [x,y]=unrotate(sx,sy),S=SC(); return [view.cx+(x-W/2)/S, view.cy+(y-H/2)/S]; };
 
 /* ---------- Vẽ ---------- */
 const DEF_LINE={css:'rgba(255,235,59,1)'}, DEF_FILL={css:'rgba(255,235,59,0.35)'};
 function inView(bb,pad){
-  const S=SC(), l=view.cx-W/2/S, r=view.cx+W/2/S, t=view.cy-H/2/S, b=view.cy+H/2/S;
+  const S=SC(), radius=Math.hypot(W,H)/2, l=view.cx-radius/S, r=view.cx+radius/S, t=view.cy-radius/S, b=view.cy+radius/S;
   pad=(pad||0)/S;
   return !(bb[2]<l-pad||bb[0]>r+pad||bb[3]<t-pad||bb[1]>b+pad);
 }
@@ -873,7 +878,7 @@ function drawScale(){
   ctx.restore();
 }
 function drawVectors(){ drawPolys(); drawLines(); drawPoints(); }
-const useCache=()=>vcMode==='on'||(vcMode==='auto'&&heavy);
+const useCache=()=>Math.abs(view.rot)<0.001&&(vcMode==='on'||(vcMode==='auto'&&heavy));
 function renderCache(){
   const Ws=W,Hs=H,cs=ctx; const M=Math.round(Math.max(Ws,Hs)*0.25), cd=Math.min(DPR,2);
   const c=VC?VC.cv:document.createElement('canvas');
@@ -899,12 +904,16 @@ function draw(){
   dirty=false;
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.fillStyle=BASES[baseIdx].url?'#cfd8dc':'#ffffff'; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.translate(W/2,H/2); ctx.rotate(view.rot); ctx.translate(-W/2,-H/2);
   const b=BASES[baseIdx];
   if(b.url){
-    drawTileLayer(b,true,(hdOn&&b.hd&&DPR>1)?1:0);
+    ctx.imageSmoothingEnabled=imgSmooth; ctx.imageSmoothingQuality='high';
+    ctx.filter='brightness('+imgBright+'%) contrast('+imgContrast+'%) saturate('+imgSat+'%)';
+    drawTileLayer(b,true,(hdOn&&b.hd&&DPR>1)?ultraLevel:0);
+    ctx.filter='none'; ctx.imageSmoothingEnabled=true;
     if(labelsOn&&b.lbl) drawTileLayer(b.lbl,false,0);
   }
-  drawOverlays(); drawVectorLayer(); drawSelected(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); drawScale();
+  drawOverlays(); drawVectorLayer(); drawSelected(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); ctx.restore(); drawScale();
 }
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,3);
@@ -921,6 +930,7 @@ function ptSegDist(px,py,ax,ay,bx,by){
 }
 function inRing(m,x,y){ let c=false; const n=m.length/2; for(let i=0,j=n-1;i<n;j=i++){ const xi=m[2*i],yi=m[2*i+1],xj=m[2*j],yj=m[2*j+1]; if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi) c=!c; } return c; }
 function hit(sx,sy){
+  [sx,sy]=unrotate(sx,sy);
   const S=SC(), ox=W/2-view.cx*S, oy=H/2-view.cy*S;
   for(let i=L.pt.length-1;i>=0;i--){ const {f,p}=L.pt[i]; const x=p.m[0]*S+ox,y=p.m[1]*S+oy; if(Math.hypot(x-sx,y-sy)<22) return {f,p}; }
   for(let i=L.ln.length-1;i>=0;i--){
@@ -1086,6 +1096,24 @@ function showBase(){
     });
     if(BASES[baseIdx].lbl) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:labelsOn,onchange:e=>{ labelsOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên đường, địa danh trên ảnh vệ tinh'}))));
     if(BASES[baseIdx].hd) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:hdOn,onchange:e=>{ hdOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Ảnh nét cao (tốn dữ liệu gấp khoảng 4 lần)'}))));
+    b.append(el('div',{style:'margin:12px 0 6px;font-weight:700',text:'🔎 P.QLDA1 GIS Ultra HD – điều chỉnh ảnh'}));
+    const quality=el('select',{class:'ktt'});
+    [['0','Tiết kiệm dữ liệu'],['1','HD – ưu tiên nét (khuyến nghị)'],['2','Ultra HD – tải tile chi tiết hơn']].forEach(([v,t])=>quality.append(el('option',{value:v,text:t})));
+    quality.value=String(ultraLevel);
+    quality.onchange=()=>{ultraLevel=+quality.value; hdOn=ultraLevel>0; savePrefs(); redraw();};
+    b.append(el('div',{class:'row'},el('label',{},el('span',{text:'Chất lượng tile'}),quality)));
+    const mkSlider=(title,key,min,max)=>{
+      const value=el('span',{text:String(key())+'%',style:'min-width:42px;text-align:right'});
+      const input=el('input',{type:'range',min:String(min),max:String(max),value:String(key()),style:'width:100%;accent-color:#0277bd'});
+      input.oninput=()=>{key(+input.value);value.textContent=input.value+'%';savePrefs();redraw();};
+      b.append(el('div',{style:'padding:5px 0'},el('div',{class:'row'},el('span',{text:title,style:'flex:1'}),value),input));
+    };
+    mkSlider('Tương phản',v=>v===undefined?imgContrast:(imgContrast=v),80,160);
+    mkSlider('Độ sáng',v=>v===undefined?imgBright:(imgBright=v),70,140);
+    mkSlider('Màu sắc',v=>v===undefined?imgSat:(imgSat=v),70,160);
+    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:imgSmooth,onchange:e=>{imgSmooth=e.target.checked;savePrefs();redraw();}}),el('span',{text:'Làm mịn khi phóng to'}))));
+    b.append(el('div',{class:'btns'},el('button',{class:'gray',text:'↺ Đặt lại chất lượng ảnh',onclick:()=>{ultraLevel=1;hdOn=true;imgContrast=105;imgBright=100;imgSat=108;imgSmooth=true;savePrefs();showBase();redraw();}})));
+    b.append(el('div',{class:'cnt',style:'margin:8px 0',text:'Ultra HD chỉ yêu cầu tile ở mức zoom chi tiết hơn nếu nhà cung cấp có ảnh. Không tạo thêm chi tiết từ ảnh gốc. Mức Ultra HD có thể tải nhiều dữ liệu và chậm trên mạng yếu. Các bộ lọc chỉ áp dụng cho ảnh nền, không đổi màu ranh KMZ/KML.'}));
     b.append(el('div',{class:'cnt',text:'Mỗi nguồn có ảnh chụp ở thời điểm khác nhau. Chỗ nào ảnh Google cũ hay mờ thì thử đổi sang Esri, và ngược lại. Bản đồ nền cần có mạng; dữ liệu KMZ vẫn xem được khi không có mạng.'}));
   });
 }
@@ -1161,7 +1189,7 @@ setTimeout(()=>{ if(!gpsUserOff&&watchId==null) startGPS(true); },3000); /* tự
 
 /* ---------- Cảm ứng ---------- */
 const ptrs=new Map(); let moved=false, sx0=0, sy0=0, pinch=null, tapTimer=0, lastTap={t:0,x:0,y:0};
-function startPinch(){ const [a,b]=[...ptrs.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
+function startPinch(){ const [a,b]=[...ptrs.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,angle:Math.atan2(b.y-a.y,b.x-a.x),x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
 cv.addEventListener('pointerdown',e=>{
   cancelAnimationFrame(anim);
   if(!sRes.hidden) sRes.hidden=true;
@@ -1176,15 +1204,18 @@ cv.addEventListener('pointermove',e=>{
   if(ptrs.size===1){
     if(!moved&&Math.hypot(e.clientX-sx0,e.clientY-sy0)<8) return;
     moved=true;
-    const S=SC(); view.cx-=(e.clientX-p.x)/S; view.cy-=(e.clientY-p.y)/S; clampView();
+    const S=SC(), a=-view.rot, dx=e.clientX-p.x,dy=e.clientY-p.y; view.cx-=(dx*Math.cos(a)-dy*Math.sin(a))/S; view.cy-=(dx*Math.sin(a)+dy*Math.cos(a))/S; clampView();
     p.x=e.clientX; p.y=e.clientY; redraw();
   } else if(ptrs.size===2){
     p.x=e.clientX; p.y=e.clientY;
     const [a,b]=[...ptrs.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y)||1, mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-    const S0=SC(), wx=view.cx+(pinch.x-W/2)/S0, wy=view.cy+(pinch.y-H/2)/S0;
-    view.z=clamp(view.z+Math.log2(d/pinch.d),0,MAXZ); const S1=SC();
-    view.cx=wx-(mx-W/2)/S1; view.cy=wy-(my-H/2)/S1; clampView();
-    pinch={d,x:mx,y:my}; redraw();
+    const [ux,uy]=unrotate(pinch.x,pinch.y),S0=SC(), wx=view.cx+(ux-W/2)/S0, wy=view.cy+(uy-H/2)/S0;
+    const angle=Math.atan2(b.y-a.y,b.x-a.x);
+    let da=angle-pinch.angle; while(da>PI) da-=2*PI; while(da< -PI) da+=2*PI;
+    view.rot+=da; view.z=clamp(view.z+Math.log2(d/pinch.d),0,MAXZ);
+    const [nx,ny]=unrotate(mx,my),S1=SC();
+    view.cx=wx-(nx-W/2)/S1; view.cy=wy-(ny-H/2)/S1; clampView();
+    pinch={d,angle,x:mx,y:my}; redraw();
   }
 });
 function endPtr(e,cancel){
