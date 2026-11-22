@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
-<title>P.QLDA1 GIS Ultra HD</title>
+<title>Google Earth AI - QLDA1 - Ban GT</title>
+<meta name="description" content="Google Earth AI - QLDA1 - Ban GT: Xem bản đồ vệ tinh, KMZ/KML và công cụ GIS." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Google Earth AI - QLDA1 - Ban GT" />
+<meta property="og:description" content="Ứng dụng bản đồ vệ tinh, xem KMZ/KML và công cụ GIS." />
+<meta property="og:url" content="https://nguyentronghieu876356-arch.github.io/xemkmz/" />
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Roboto,"Segoe UI",sans-serif;background:#cfd8dc;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
@@ -1096,7 +1101,7 @@ function showBase(){
     });
     if(BASES[baseIdx].lbl) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:labelsOn,onchange:e=>{ labelsOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên đường, địa danh trên ảnh vệ tinh'}))));
     if(BASES[baseIdx].hd) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:hdOn,onchange:e=>{ hdOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Ảnh nét cao (tốn dữ liệu gấp khoảng 4 lần)'}))));
-    b.append(el('div',{style:'margin:12px 0 6px;font-weight:700',text:'🔎 P.QLDA1 GIS Ultra HD – điều chỉnh ảnh'}));
+    b.append(el('div',{style:'margin:12px 0 6px;font-weight:700',text:'🔎 Google Earth AI - QLDA1 - Ban GT – điều chỉnh ảnh'}));
     const quality=el('select',{class:'ktt'});
     [['0','Tiết kiệm dữ liệu'],['1','HD – ưu tiên nét (khuyến nghị)'],['2','Ultra HD – tải tile chi tiết hơn']].forEach(([v,t])=>quality.append(el('option',{value:v,text:t})));
     quality.value=String(ultraLevel);
