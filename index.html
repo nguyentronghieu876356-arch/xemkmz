@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
 <title>Google Earth AI - QLDA1 - Ban GT</title>
-<meta name="description" content="Google Earth AI - QLDA1 - Ban GT: Xem bản đồ vệ tinh, KMZ/KML và công cụ GIS." />
+<meta name="description" content="Google Earth AI - QLDA1 - Ban GT: GIS thực địa, KMZ/KML, GPS độ chính xác, la bàn và đo khoảng cách tới ranh GPMB." />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Google Earth AI - QLDA1 - Ban GT" />
 <meta property="og:description" content="Ứng dụng bản đồ vệ tinh, xem KMZ/KML và công cụ GIS." />
@@ -84,6 +84,23 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 #empty button{margin-top:10px;border:0;background:#0277bd;color:#fff;border-radius:10px;padding:10px 22px;font-size:15px}
 #toast{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));background:rgba(0,0,0,.82);color:#fff;border-radius:18px;padding:8px 16px;font-size:13px;max-width:86%;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
 #toast.show{opacity:1}
+#app:has(#fieldHud:not([hidden])) #toast{bottom:calc(151px + env(safe-area-inset-bottom))}
+/* GIS THỰC ĐỊA */
+#compass{position:absolute;right:8px;top:calc(155px + env(safe-area-inset-top));width:44px;min-height:61px;border:0;border-radius:12px;background:rgba(20,32,43,.88);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-shadow:0 2px 7px #0002;padding:5px 2px;z-index:2}
+#needle{display:block;position:relative;font-weight:800;font-size:19px;line-height:22px;transform-origin:center center;color:#ff6963}
+#headingDeg{font-size:10px;font-weight:700;white-space:nowrap}
+#fieldHud{position:absolute;left:8px;bottom:calc(66px + env(safe-area-inset-bottom));max-width:min(440px,calc(100% - 20px));z-index:2}
+#fieldBtn{background:rgba(16,38,49,.91);color:#fff;border:1px solid rgba(255,255,255,.23);border-radius:12px;padding:8px 12px;font-size:12px;text-align:left;line-height:1.5;min-width:168px;max-width:100%;box-shadow:0 2px 7px #0003;white-space:normal;touch-action:manipulation}
+#fieldBtn b{color:#90e9ff}
+#fieldBtn.warn{border-color:#ffcc80;background:rgba(91,48,14,.94)}
+#fieldBtn .secondary{font-size:11px;color:#c7d9e1;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#pickHint{position:absolute;left:8px;right:62px;top:calc(110px + env(safe-area-inset-top));padding:11px 12px;background:rgba(0,80,68,.95);color:white;font-size:12px;line-height:1.4;border-radius:12px;z-index:3;box-shadow:0 2px 8px #0003}
+#pickHint button{float:right;border:1px solid #fff7;border-radius:8px;background:rgba(255,255,255,.15);color:white;padding:5px;font-weight:600;margin-left:8px}
+#fieldHud[hidden],#pickHint[hidden]{display:none}
+#app.fs #compass,#app.fs #fieldHud,#app.fs #pickHint{display:none!important}
+.fieldNote{color:#536873;font-size:12px;line-height:1.5;padding:8px 0}
+.fieldHeading{font-weight:700;color:#173c4b;margin:12px 0 5px}
+.fieldTag{display:inline-block;padding:4px 9px;border-radius:9px;background:#e9f6fb;color:#006888;font-size:12px;font-weight:700}
 </style>
 </head>
 <body>
@@ -95,6 +112,9 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
     <span id="topInfo">Chưa mở file</span>
   </div>
   <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button></div>
+  <button id="compass" title="Chạm để trở về hướng Bắc" aria-label="La bàn, bấm để đưa hướng Bắc lên trên"><span id="needle">▲</span><span id="headingDeg">0°</span></button>
+  <div id="fieldHud"><button id="fieldBtn" aria-label="Mở công cụ GIS thực địa"><b>⌖ GIS thực địa</b><span class="secondary">GPS và khoảng cách đến ranh</span></button></div>
+  <div id="pickHint" hidden>Chạm vào <b>đường hoặc đa giác KMZ/KML</b> dùng làm ranh GPMB.<button id="pickCancel">Hủy</button></div>
   <div id="empty"><div>Bấm <b>Mở</b> để chọn file <b>KMZ</b> hoặc <b>KML</b> trong điện thoại.</div><button id="emptyOpen">📁 Mở file KMZ</button></div>
   <div id="measureBar" hidden>
     <div id="mText">Kéo bản đồ cho vòng tròn trùng điểm đầu, rồi bấm Đặt điểm</div>
@@ -120,8 +140,18 @@ const $=id=>document.getElementById(id);
 const cv=$('c'), ctx0=cv.getContext('2d'); let ctx=ctx0;
 let VC=null, vcTimer=0, heavy=false, vcMode='auto'; /* VC = ảnh lớp phủ vẽ sẵn của dữ liệu vector */
 const PI=Math.PI;
-let W=0,H=0,DPR=1;
+let W=0,H=0,DPR=1,BAR_H=60;
+/* Tăng tốc GPU: cache nền ảnh vệ tinh giữa các khung hình. */
+let BG=null, bgTimer=0, bgDirty=true, bgInteracting=false, bgRenderCount=0;
 const view={cx:0.79,cy:0.455,z:5.5,rot:0};
+let lastCompassAngle=null;
+function updateCompass(){
+  const deg=((Math.round(-view.rot*180/PI)%360)+360)%360;
+  if(deg===lastCompassAngle) return;
+  lastCompassAngle=deg;
+  $('needle').style.transform='rotate('+view.rot+'rad)';
+  $('headingDeg').textContent=deg+'°';
+}
 function unrotate(x,y){const a=-view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
 function rotateXY(x,y){const a=view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
 let dirty=false;
@@ -234,16 +264,19 @@ function getTile(layer,z,x,y){
   let t=tiles.get(key);
   if(t) return t;
   t={ok:false,bad:false,img:new Image()};
-  t.img.onload=()=>{ t.ok=true; redraw(); };
-  t.img.onerror=()=>{ t.bad=true; clearTimeout(errT); errT=setTimeout(redraw,200); };
+  t.img.onload=()=>{ t.ok=true; bgDirty=true; scheduleBackground(105); if(!BG) redraw(); };
+  t.img.onerror=()=>{ t.bad=true; bgDirty=true; scheduleBackground(180); };
   t.img.src=layer.url.replace('{s}',(x+y)%4).replace('{z}',z).replace('{x}',x).replace('{y}',y);
   tiles.set(key,t);
-  if(tiles.size>1400){ let n=0; for(const k of tiles.keys()){ tiles.delete(k); if(++n>400) break; } }
+  if(tiles.size>950){ let n=0; for(const k of tiles.keys()){ tiles.delete(k); if(++n>210) break; } }
   return t;
 }
 function drawTileLayer(layer,fallback,zoff){
   /* zoff = 1: chế độ nét cao, tải ảnh chi tiết hơn một mức cho màn hình mật độ điểm ảnh cao */
-  const tz=clamp(Math.round(view.z+(zoff||0)),0,layer.max);
+  let tz=clamp(Math.round(view.z+(zoff||0)),0,layer.max);
+  // Giới hạn số tile trong vùng nhìn rộng; Ultra HD không được làm máy hết RAM.
+  const diameter=Math.hypot(W,H);
+  while(tz>0 && Math.pow(diameter/(256*Math.pow(2,view.z-tz)),2)>450) tz--;
   const n=1<<tz, S=SC(), ts=256*Math.pow(2,view.z-tz);
   const radius=Math.hypot(W,H)/2;
   const left=view.cx-radius/S, right=view.cx+radius/S, top=view.cy-radius/S, bot=view.cy+radius/S;
@@ -266,6 +299,68 @@ function drawTileLayer(layer,fallback,zoff){
         }
       }
     }
+  }
+}
+
+/* ---------- Bộ đệm ảnh vệ tinh: kéo/zoom/xoay chỉ nội suy một ảnh raster ---------- */
+function backgroundSignature(){
+  return [BASES[baseIdx].id,labelsOn,hdOn,ultraLevel,imgContrast,imgBright,imgSat,imgSmooth,W,H,DPR].join('|');
+}
+function scheduleBackground(delay=145){
+  if(!BASES[baseIdx].url) return;
+  clearTimeout(bgTimer);
+  bgTimer=setTimeout(()=>{
+    if(bgInteracting){ scheduleBackground(145); return; }
+    // Việc ghép tile diễn ra sau khi ngừng thao tác, không cản từng bước kéo tay.
+    try{ renderBackground(); redraw(); }catch(e){ BG=null; }
+  },delay);
+}
+function renderBackground(){
+  const layer=BASES[baseIdx];
+  if(!layer.url){ BG=null; bgDirty=false; return; }
+  const Ws=W,Hs=H, cs=ctx;
+  // Tràn ra ngoài khung nhìn để vẫn có ảnh lúc vừa kéo và xoay hai ngón tay.
+  const margin=Math.ceil(Math.max(Ws,Hs)*0.40);
+  const cw=Ws+2*margin,ch=Hs+2*margin;
+  // Tránh cấp phát canvas quá lớn trên Samsung, vẫn đủ nét HD sau khi dừng kéo.
+  const d=Math.max(0.9,Math.min(DPR,2,Math.sqrt(13500000/(cw*ch))));
+  const c=document.createElement('canvas');
+  c.width=Math.ceil(cw*d); c.height=Math.ceil(ch*d);
+  const bc=c.getContext('2d',{alpha:false});
+  if(!bc) return;
+  const position={cx:view.cx,cy:view.cy,z:view.z};
+  W=cw; H=ch; ctx=bc;
+  try{
+    bc.setTransform(d,0,0,d,0,0);
+    bc.fillStyle='#cfd8dc'; bc.fillRect(0,0,cw,ch);
+    bc.imageSmoothingEnabled=imgSmooth;
+    bc.imageSmoothingQuality='high';
+    bc.filter='brightness('+imgBright+'%) contrast('+imgContrast+'%) saturate('+imgSat+'%)';
+    drawTileLayer(layer,true,(hdOn&&layer.hd&&DPR>1)?ultraLevel:0);
+    bc.filter='none';bc.imageSmoothingEnabled=true;
+    if(labelsOn&&layer.lbl) drawTileLayer(layer.lbl,false,0);
+  }finally{
+    W=Ws;H=Hs;ctx=cs;
+  }
+  BG={cv:c,w:cw,h:ch, ...position,signature:backgroundSignature(),at:performance.now()};
+  bgDirty=false;bgRenderCount++;
+}
+function drawBackground(){
+  if(!BASES[baseIdx].url) return;
+  const sign=backgroundSignature();
+  if(!BG && !bgInteracting){renderBackground();}
+  else if(BG){
+    const k=Math.pow(2,view.z-BG.z), S=SC();
+    const moved=Math.hypot((BG.cx-view.cx)*S,(BG.cy-view.cy)*S);
+    const stale=BG.signature!==sign||bgDirty||k>1.52||k<0.67||moved>Math.max(W,H)*0.26;
+    if(stale) scheduleBackground(bgInteracting?155:85);
+  }
+  if(BG){
+    const S=SC(),k=Math.pow(2,view.z-BG.z);
+    const x=W/2+(BG.cx-view.cx)*S-BG.w/2*k;
+    const y=H/2+(BG.cy-view.cy)*S-BG.h/2*k;
+    ctx.imageSmoothingEnabled=imgSmooth;
+    ctx.drawImage(BG.cv,0,0,BG.cv.width,BG.cv.height,x,y,BG.w*k,BG.h*k);
   }
 }
 
@@ -292,6 +387,10 @@ function rebuild(){
   for(const it of L.ln) it.k=sk(it.f,0);
   VC=null;
   if(vcMode==='auto'&&!heavy&&(L.pg.length+L.ln.length+L.pt.length)>3000) heavy=true;
+  if(fieldBoundary && ![...L.pg,...L.ln].some(it=>it.p===fieldBoundary.p)){
+    fieldBoundary=null; fieldResult=null;
+  }
+  updateFieldResult(); updateFieldUI();
   redraw();
 }
 function nodeBB(n){ let b=null; for(const f of n.feats) b=unionBB(b,f.bb); for(const k of n.kids) b=unionBB(b,nodeBB(k)); return b; }
@@ -680,6 +779,12 @@ function flyTo(cx,cy,z){
     if(k<1) anim=requestAnimationFrame(step); };
   anim=requestAnimationFrame(step);
 }
+function northUp(){
+  if(Math.abs(view.rot)<0.001){ toast('Bản đồ đang hướng Bắc'); return; }
+  if(gpsFollowMode==='heading')gpsFollowMode='follow';
+  view.rot=0; updateCompass(); updateFieldUI(); redraw(); toast('Đã đưa hướng Bắc lên trên');
+}
+$('compass').onclick=northUp;
 function fitBB(bb,pad,maxZ){
   pad=pad||1.2;
   const w=bb[2]-bb[0], h=bb[3]-bb[1];
@@ -864,10 +969,15 @@ function drawGPS(){
   const [x,y]=pxOf(MX(gps.lon),MY(gps.lat));
   const r=gps.acc/mpp(gps.lat);
   if(r>8){ ctx.beginPath(); ctx.arc(x,y,r,0,2*PI); ctx.fillStyle='rgba(33,150,243,.16)'; ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle='rgba(33,150,243,.5)'; ctx.stroke(); }
+  if(Number.isFinite(gps.heading) && (gps.speed||0)>0.7){
+    ctx.save(); ctx.translate(x,y); ctx.rotate(gps.heading*PI/180);
+    ctx.beginPath(); ctx.moveTo(0,-26);ctx.lineTo(-8,-11);ctx.lineTo(8,-11);ctx.closePath();
+    ctx.fillStyle='#1876d2';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke();ctx.restore();
+  }
   ctx.beginPath(); ctx.arc(x,y,8,0,2*PI); ctx.fillStyle='#2196f3'; ctx.fill(); ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke();
 }
 function drawScale(){
-  const BH=$('bar').offsetHeight;
+  const BH=BAR_H;
   const lat=LAT(view.cy), mp=mpp(lat), target=100*mp;
   const p10=Math.pow(10,Math.floor(Math.log10(target)));
   let nice=p10; for(const k of [1,2,5,10]){ if(k*p10<=target) nice=k*p10; }
@@ -882,10 +992,10 @@ function drawScale(){
   const at=bb_.attr; if(at){ ctx.font='10px system-ui,sans-serif'; ctx.lineWidth=2.5; ctx.strokeText(at,x,y+13); ctx.fillText(at,x,y+13); }
   ctx.restore();
 }
-function drawVectors(){ drawPolys(); drawLines(); drawPoints(); }
-const useCache=()=>Math.abs(view.rot)<0.001&&(vcMode==='on'||(vcMode==='auto'&&heavy));
+function drawVectors(){ drawOverlays(); drawPolys(); drawLines(); drawPoints(); }
+const useCache=()=>vcMode==='on'||(vcMode==='auto'&&(L.ov.length+L.pg.length+L.ln.length+L.pt.length)>0);
 function renderCache(){
-  const Ws=W,Hs=H,cs=ctx; const M=Math.round(Math.max(Ws,Hs)*0.25), cd=Math.min(DPR,2);
+  const Ws=W,Hs=H,cs=ctx; const M=Math.round(Math.max(Ws,Hs)*0.35), cd=Math.min(DPR,2,Math.sqrt(11000000/((Ws+2*M)*(Hs+2*M))));
   const c=VC?VC.cv:document.createElement('canvas');
   W=Ws+2*M; H=Hs+2*M; c.width=Math.round(W*cd); c.height=Math.round(H*cd);
   const cx=c.getContext('2d'); ctx=cx; cx.setTransform(cd,0,0,cd,0,0);
@@ -897,10 +1007,16 @@ function drawVectorLayer(){
     if(vcMode==='auto'&&!heavy&&dt>45){ heavy=true; VC=null; toast('File nặng: đã tự chuyển sang lớp phủ để mượt hơn.',4000); redraw(); }
     return;
   }
-  if(!VC) renderCache();
-  else { const k0=Math.pow(2,view.z-VC.z); /* phóng/thu quá xa so với ảnh vẽ sẵn thì vẽ lại ngay, tránh ảnh bị kéo quá lớn */
-    if(k0>4||k0<0.25||((k0>1.8||k0<0.55)&&performance.now()-VC.t>90)) renderCache(); }
-  if(VC.cx!==view.cx||VC.cy!==view.cy||VC.z!==view.z){ clearTimeout(vcTimer); vcTimer=setTimeout(()=>{ renderCache(); redraw(); },130); }
+  if(!VC && !bgInteracting) renderCache();
+  if(!VC) return;
+  const k0=Math.pow(2,view.z-VC.z);
+  if(VC.cx!==view.cx||VC.cy!==view.cy||VC.z!==view.z || k0>1.55 || k0<0.65){
+    clearTimeout(vcTimer);
+    vcTimer=setTimeout(()=>{
+      if(bgInteracting){ redraw(); return; }
+      renderCache(); redraw();
+    },145);
+  }
   const S=SC(), k=Math.pow(2,view.z-VC.z);
   const cxs=W/2+(VC.cx-view.cx)*S, cys=H/2+(VC.cy-view.cy)*S;
   ctx.drawImage(VC.cv,0,0,VC.cv.width,VC.cv.height,cxs-VC.w/2*k,cys-VC.h/2*k,VC.w*k,VC.h*k);
@@ -910,20 +1026,15 @@ function draw(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.fillStyle=BASES[baseIdx].url?'#cfd8dc':'#ffffff'; ctx.fillRect(0,0,W,H);
   ctx.save(); ctx.translate(W/2,H/2); ctx.rotate(view.rot); ctx.translate(-W/2,-H/2);
-  const b=BASES[baseIdx];
-  if(b.url){
-    ctx.imageSmoothingEnabled=imgSmooth; ctx.imageSmoothingQuality='high';
-    ctx.filter='brightness('+imgBright+'%) contrast('+imgContrast+'%) saturate('+imgSat+'%)';
-    drawTileLayer(b,true,(hdOn&&b.hd&&DPR>1)?ultraLevel:0);
-    ctx.filter='none'; ctx.imageSmoothingEnabled=true;
-    if(labelsOn&&b.lbl) drawTileLayer(b.lbl,false,0);
-  }
-  drawOverlays(); drawVectorLayer(); drawSelected(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); ctx.restore(); drawScale();
+  drawBackground();
+  drawVectorLayer(); drawSelected(); drawFieldBoundary(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); ctx.restore(); drawScale(); updateCompass();
 }
 function resize(){
-  DPR=Math.min(window.devicePixelRatio||1,3);
+  DPR=Math.min(window.devicePixelRatio||1,2.25);
   W=cv.clientWidth; H=cv.clientHeight;
-  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); redraw();
+  BAR_H=$('bar').offsetHeight||60;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  BG=null; bgDirty=true; VC=null; redraw();
 }
 window.addEventListener('resize',resize);
 
@@ -942,7 +1053,8 @@ function hit(sx,sy){
     const {f,p}=L.ln[i]; if(!inView(p.bb,16)) continue; const m=p.m;
     for(let k=2;k<m.length;k+=2){ if(ptSegDist(sx,sy,m[k-2]*S+ox,m[k-1]*S+oy,m[k]*S+ox,m[k+1]*S+oy)<14) return {f,p}; }
   }
-  const [wx,wy]=s2w(sx,sy);
+  // sx/sy đã được bỏ xoay ở đầu hit(), không bỏ xoay lần hai.
+  const wx=view.cx+(sx-W/2)/S, wy=view.cy+(sy-H/2)/S;
   for(let i=L.pg.length-1;i>=0;i--){
     const {f,p}=L.pg[i]; if(wx<p.bb[0]||wx>p.bb[2]||wy<p.bb[1]||wy>p.bb[3]) continue;
     let c=0; for(const r of p.rings) if(inRing(r.m,wx,wy)) c++;
@@ -956,9 +1068,9 @@ let curTitle='', curFill=null;
 function openSheet(title,fill){
   curTitle=title; curFill=fill;
   const b=$('shB'); const st=b.scrollTop; b.textContent=''; $('shT').textContent=title; fill(b);
-  $('sheet').hidden=false; b.scrollTop=st;
+  $('sheet').hidden=false; b.scrollTop=st; updateFieldUI();
 }
-function closeSheet(){ $('sheet').hidden=true; curFill=null; selected=null; pin=null; redraw(); }
+function closeSheet(){ $('sheet').hidden=true; curFill=null; selected=null; pin=null; updateFieldUI(); redraw(); }
 function linkify(text){
   const frag=document.createDocumentFragment(); const re=/https?:\/\/[^\s<>"']+/g; let last=0,m;
   while((m=re.exec(text))){ frag.append(text.slice(last,m.index)); frag.append(el('a',{href:m[0],target:'_blank',rel:'noopener noreferrer',text:m[0]})); last=m.index+m[0].length; }
@@ -987,6 +1099,9 @@ function showFeature(sel){
     if(f.desc){ if(f._d===undefined) f._d=htmlToText(f.desc); if(f._d){ const d=el('div',{class:'desc'}); d.append(linkify(f._d)); b.append(d); } }
     const bt=el('div',{class:'btns'});
     bt.append(el('button',{class:'gray',text:'Phóng tới',onclick:()=>fitBB(f.bb,1.8)}));
+    if(sel.p && (sel.p.t==='pg'||sel.p.t==='ln')){
+      bt.append(el('button',{text:'📐 Chọn làm ranh GPMB',onclick:()=>setFieldBoundary(sel)}));
+    }
     if(pts.length){ const p=pts[0]; bt.append(el('button',{class:'gray',text:'Chép WGS84',onclick:()=>copyText(fmtCoord(p.ll[1],p.ll[0]))})); bt.append(el('button',{class:'gray',text:'Chép VN2000',onclick:()=>copyText(vnTxt)})); }
     b.append(bt);
   });
@@ -1030,6 +1145,7 @@ function drawPlaces(){
   ctx.restore();
 }
 function hitPlace(sx,sy){
+  [sx,sy]=unrotate(sx,sy);
   for(let i=PL.length-1;i>=0;i--){ const [x,y]=pxOf(MX(PL[i].lon),MY(PL[i].lat)); if(Math.hypot(sx-x,sy-(y-20))<26) return PL[i]; }
   return null;
 }
@@ -1101,6 +1217,8 @@ function showBase(){
     });
     if(BASES[baseIdx].lbl) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:labelsOn,onchange:e=>{ labelsOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên đường, địa danh trên ảnh vệ tinh'}))));
     if(BASES[baseIdx].hd) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:hdOn,onchange:e=>{ hdOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Ảnh nét cao (tốn dữ liệu gấp khoảng 4 lần)'}))));
+    b.append(el('div',{style:'margin:12px 0 6px;font-weight:700',text:'⚡ Tăng tốc kéo / phóng to / xoay'}));
+    b.append(el('div',{class:'cnt',text:'Chế độ mượt đang hoạt động: tái sử dụng ảnh nền và dữ liệu KMZ khi di chuyển, tải lại chi tiết sau khi dừng tay. Giảm chi phí vẽ liên tục trên điện thoại.'}));
     b.append(el('div',{style:'margin:12px 0 6px;font-weight:700',text:'🔎 Google Earth AI - QLDA1 - Ban GT – điều chỉnh ảnh'}));
     const quality=el('select',{class:'ktt'});
     [['0','Tiết kiệm dữ liệu'],['1','HD – ưu tiên nét (khuyến nghị)'],['2','Ultra HD – tải tile chi tiết hơn']].forEach(([v,t])=>quality.append(el('option',{value:v,text:t})));
@@ -1137,7 +1255,7 @@ function setMeasure(on){
   measuring=on; $('measureBar').hidden=!on; $('bMeasure').classList.toggle('on',on);
   if(on){ closeSheet(); mpts=[]; updateMeasure(); }
   else mpts=[];
-  redraw();
+  updateFieldUI(); redraw();
 }
 $('bMeasure').onclick=()=>setMeasure(!measuring);
 $('mAdd').onclick=addMeasurePoint;
@@ -1162,46 +1280,229 @@ $('fsBtn').onclick=()=>setFS(true);
 document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&fs) setFS(false); });
 window.addEventListener('popstate',()=>{ if(fs){ fs=false; $('app').classList.remove('fs'); try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){} setTimeout(resize,60); } });
 
-/* ---------- GPS ---------- */
+/* ---------- GPS & GIS thực địa ---------- */
 let watchId=null, gpsUserOff=false, gpsWarned=false;
-function stopGPS(){ if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; } gps=null; $('bGps').classList.remove('on'); redraw(); }
+let gpsFollowMode='off', fieldBoundary=null, fieldResult=null, pickingBoundary=false;
+let fieldWarnMeters=20, fieldVibrate=true, wasNear=false, lastAlert=0;
+try{
+  const f=JSON.parse(localStorage.getItem('gis_field_settings')||'{}');
+  if([0,5,10,20,50,100].includes(f.warn)) fieldWarnMeters=f.warn;
+  if(typeof f.vibrate==='boolean') fieldVibrate=f.vibrate;
+}catch(e){}
+function saveFieldSettings(){
+  try{localStorage.setItem('gis_field_settings',JSON.stringify({warn:fieldWarnMeters,vibrate:fieldVibrate}));}catch(e){}
+}
+function stopGPS(){
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  gps=null; gpsFollowMode='off'; fieldResult=null;
+  $('bGps').classList.remove('on'); updateFieldUI(); redraw();
+}
+function updateFieldResult(){
+  fieldResult=(gps&&fieldBoundary)?nearestBoundary(gps,fieldBoundary.p):null;
+}
+/* Tính khoảng cách tới đoạn gần nhất bằng hệ tọa độ địa phương và kiểm tra lại bằng Haversine.
+   CHỈ đo đến đường/đa giác mà người dùng đã chọn, không tự suy đoán mọi lớp KMZ là ranh đất. */
+function nearestBoundary(pos,part){
+  if(!part || (part.t!=='ln'&&part.t!=='pg')) return null;
+  const cosLat=Math.max(0.01,Math.cos(pos.lat*PI/180)), xscale=111319.49*cosLat,yscale=111132.92;
+  let best=Infinity, cLon=NaN,cLat=NaN;
+  const segments=part.t==='pg'?part.rings.map(r=>r.ll):[part.ll];
+  for(const ll of segments){
+    if(!ll || ll.length<4)continue;
+    const n=ll.length/2, count=part.t==='pg'?n:n-1;
+    for(let i=0;i<count;i++){
+      const j=(i+1)%n, aLon=ll[2*i], aLat=ll[2*i+1], bLon=ll[2*j], bLat=ll[2*j+1];
+      const ax=(aLon-pos.lon)*xscale,ay=(aLat-pos.lat)*yscale;
+      const dx=(bLon-aLon)*xscale,dy=(bLat-aLat)*yscale;
+      const t=clamp((-(ax*dx+ay*dy))/(dx*dx+dy*dy||1),0,1);
+      const px=ax+t*dx,py=ay+t*dy,d2=px*px+py*py;
+      if(d2<best){best=d2;cLon=aLon+(bLon-aLon)*t;cLat=aLat+(bLat-aLat)*t;}
+    }
+  }
+  if(!Number.isFinite(best))return null;
+  let inside=null;
+  if(part.t==='pg'){
+    let crossings=0; const mx=MX(pos.lon), my=MY(pos.lat);
+    for(const ring of part.rings) if(inRing(ring.m,mx,my)) crossings++;
+    inside=crossings%2===1;
+  }
+  return {meters:hav(pos.lon,pos.lat,cLon,cLat),lon:cLon,lat:cLat,inside};
+}
+function drawFieldBoundary(){
+  if(!fieldBoundary)return;
+  const p=fieldBoundary.p;
+  ctx.save(); ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle='#00ffc3';ctx.lineWidth=4;
+  ctx.shadowColor='rgba(0,0,0,.85)';ctx.shadowBlur=4;
+  ctx.beginPath();
+  if(p.t==='ln')trace(p.m,false);
+  else if(p.t==='pg') for(const r of p.rings)trace(r.m,true);
+  ctx.stroke();ctx.shadowBlur=0;
+  if(gps&&fieldResult){
+    const [gx,gy]=pxOf(MX(gps.lon),MY(gps.lat));
+    const [rx,ry]=pxOf(MX(fieldResult.lon),MY(fieldResult.lat));
+    ctx.beginPath();ctx.setLineDash([7,5]);ctx.lineWidth=3;ctx.strokeStyle='#00e5ff';
+    ctx.moveTo(gx,gy);ctx.lineTo(rx,ry);ctx.stroke();ctx.setLineDash([]);
+    ctx.beginPath();ctx.arc(rx,ry,5,0,2*PI);ctx.fillStyle='#00ffc3';ctx.fill();
+    ctx.strokeStyle='#102a2c';ctx.lineWidth=2;ctx.stroke();
+  }
+  ctx.restore();
+}
+function fieldNearWarning(){
+  if(!gps||!fieldResult||!fieldWarnMeters)return;
+  const near=fieldResult.meters<=fieldWarnMeters;
+  const usableAccuracy=gps.acc<=Math.max(20,fieldWarnMeters);
+  if(near&&usableAccuracy&&!wasNear&&Date.now()-lastAlert>20000){
+    lastAlert=Date.now();
+    toast('Gần ranh đã chọn: '+fmtLen(fieldResult.meters)+' · GPS ±'+Math.round(gps.acc)+' m (chỉ tham khảo)',5000);
+    if(fieldVibrate&&navigator.vibrate)try{navigator.vibrate([120,70,120]);}catch(e){}
+  }
+  wasNear=near;
+}
+function setFieldBoundary(sel){
+  if(!sel||!sel.p||!['pg','ln'].includes(sel.p.t)){
+    toast('Hãy chọn một đường hoặc đa giác từ file KMZ/KML');return;
+  }
+  fieldBoundary={f:sel.f,p:sel.p}; pickingBoundary=false; wasNear=false;
+  $('pickHint').hidden=true; updateFieldResult();updateFieldUI();
+  if(!$('sheet').hidden)closeSheet();
+  redraw(); toast('Đã chọn ranh: '+(sel.f.name||'Đối tượng KMZ/KML'),3500);
+}
+function updateFieldUI(){
+  const hud=$('fieldHud');if(!hud)return;
+  hud.hidden=measuring||!$('sheet').hidden;
+  const b=$('fieldBtn');
+  const gpsTxt=gps?'GPS ±'+Math.round(gps.acc)+' m':'GPS chưa có vị trí';
+  let ranhTxt=fieldBoundary?(fieldResult?'Ranh '+fmtLen(fieldResult.meters)+(fieldResult.inside===null?'':fieldResult.inside?' · trong vùng':' · ngoài vùng'):'Đã chọn ranh · đang chờ GPS'):'Chưa chọn ranh GPMB';
+  if(fieldBoundary && fieldBoundary.f && fieldBoundary.f.name) ranhTxt+=' · '+fieldBoundary.f.name.slice(0,28);
+  const warn=!!(gps&&fieldResult&&fieldWarnMeters&&fieldResult.meters<=fieldWarnMeters);
+  b.classList.toggle('warn',warn);
+  b.replaceChildren(el('b',{text:'⌖ '+gpsTxt+(gpsFollowMode==='off'?'':' · bám theo')}),el('span',{class:'secondary',text:ranhTxt}));
+}
+function makeFieldSelect(items,value,change){
+  const sl=el('select',{class:'ktt',style:'flex:1;min-width:0;max-width:100%'});
+  for(const [v,t] of items)sl.append(el('option',{value:String(v),text:t}));
+  sl.value=String(value);sl.onchange=()=>change(sl.value);
+  return sl;
+}
+function showFieldSheet(){
+  openSheet('GIS thực địa · GPS / ranh GPMB',b=>{
+    b.append(el('div',{class:'fieldHeading',text:'Vị trí GPS'}));
+    if(gps){
+      b.append(kv('WGS84',fmtCoord(gps.lat,gps.lon)));
+      b.append(kv('Sai số thiết bị','±'+Math.round(gps.acc)+' m (ước lượng)'));
+      b.append(kv('Cập nhật',new Date(gps.time).toLocaleTimeString('vi-VN')));
+      if(Number.isFinite(gps.heading))b.append(kv('Hướng di chuyển',Math.round(gps.heading)+'°'));
+      if(Number.isFinite(gps.speed))b.append(kv('Tốc độ',(gps.speed*3.6).toFixed(1)+' km/h'));
+    }else b.append(el('div',{class:'fieldNote',text:'GPS chưa có vị trí. Mở bằng HTTPS và cấp quyền Vị trí cho trình duyệt.'}));
+    const btns=el('div',{class:'btns'});
+    btns.append(el('button',{text:watchId!=null?'⏹ Tắt GPS':'◎ Bật GPS chính xác',onclick:()=>{
+      if(watchId!=null){gpsUserOff=true;stopGPS();}else{gpsUserOff=false;gpsFollowMode='follow';startGPS(false);}
+      showFieldSheet();
+    }}));
+    if(gps)btns.append(el('button',{class:'gray',text:'⌖ Đến vị trí',onclick:()=>{flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17));closeSheet();}}));
+    b.append(btns);
+    b.append(el('div',{class:'row'},el('span',{text:'Bám theo GPS:',style:'min-width:100px'}),makeFieldSelect([
+      ['off','Không bám (được kéo bản đồ)'],['follow','Bám theo vị trí'],['heading','Bám theo vị trí và hướng đi']
+    ],gpsFollowMode,v=>{
+      gpsFollowMode=v;
+      if(watchId==null&&v!=='off'){gpsUserOff=false;startGPS(false);}
+      showFieldSheet();
+    })));
+    b.append(el('div',{class:'fieldNote',text:'Chế độ hướng đi dùng hướng GPS khi có chuyển động. La bàn N/độ ở mép phải cho biết hướng bản đồ; bấm để đưa Bắc lên trên. Kéo bản đồ bằng tay sẽ tạm dừng bám GPS.'}));
+    b.append(el('div',{class:'fieldHeading',text:'Ranh GPMB được chỉ định'}));
+    b.append(el('div',{class:'fieldTag',text:fieldBoundary?(fieldBoundary.f.name||'Đối tượng không tên'):'Chưa chọn đường hoặc đa giác ranh'}));
+    if(fieldResult){
+      b.append(kv('Đến ranh',fmtLen(fieldResult.meters)));
+      if(fieldResult.inside!==null)b.append(kv('Vị trí tương đối',fieldResult.inside?'Trong đa giác đã chọn':'Ngoài đa giác đã chọn'));
+      b.append(kv('Điểm gần nhất',fmtCoord(fieldResult.lat,fieldResult.lon)));
+      b.append(el('div',{class:'fieldNote',text:'Khoảng cách tính từ tọa độ GPS đến hình học KMZ/KML đã chọn. Với GPS sai số ±'+Math.round(gps.acc)+' m, không thể coi đây là khoảng cách pháp lý/chính xác để cắm mốc.'}));
+    }
+    const rbtn=el('div',{class:'btns'});
+    rbtn.append(el('button',{text:'📐 Chạm bản đồ để chọn ranh',onclick:()=>{
+      if(!L.pg.length&&!L.ln.length){toast('Trước tiên mở/bật file KMZ/KML có đường hoặc đa giác');return;}
+      pickingBoundary=true;closeSheet();$('pickHint').hidden=false;
+      toast('Chạm trực tiếp vào đối tượng ranh trên bản đồ',4500);
+    }}));
+    if(fieldBoundary)rbtn.append(el('button',{class:'gray',text:'Xóa ranh đã chọn',onclick:()=>{
+      fieldBoundary=null;fieldResult=null;wasNear=false;updateFieldUI();showFieldSheet();redraw();
+    }}));
+    b.append(rbtn);
+    b.append(el('div',{class:'row'},el('span',{text:'Cảnh báo gần ranh:',style:'min-width:124px'}),makeFieldSelect([
+      [0,'Tắt'],[5,'5 m'],[10,'10 m'],[20,'20 m'],[50,'50 m'],[100,'100 m']
+    ],fieldWarnMeters,v=>{fieldWarnMeters=+v;saveFieldSettings();updateFieldUI();showFieldSheet();})));
+    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:fieldVibrate,onchange:e=>{fieldVibrate=e.target.checked;saveFieldSettings();}}),el('span',{text:'Rung khi vào vùng cảnh báo (nếu máy hỗ trợ)'}))));
+    b.append(el('div',{class:'fieldNote',text:'Cảnh báo chỉ mang tính tham khảo: GPS dân dụng có thể sai số nhiều mét, tín hiệu yếu giữa nhà cao tầng/cây cối. Đảm bảo đã chọn đúng ranh thu hồi đất đã kiểm chứng. Không dùng để xác định mốc pháp lý.'}));
+  });
+}
+$('fieldBtn').onclick=showFieldSheet;
+$('pickCancel').onclick=()=>{pickingBoundary=false;$('pickHint').hidden=true;updateFieldUI();};
 function startGPS(auto){
-  if(watchId!=null) return;
-  if(!navigator.geolocation){ if(!auto) toast('Thiết bị không hỗ trợ định vị'); return; }
-  let first=true; $('bGps').classList.add('on'); if(!auto) toast('Đang lấy vị trí…');
+  if(watchId!=null)return;
+  if(!navigator.geolocation){if(!auto)toast('Thiết bị không hỗ trợ GPS qua trình duyệt');return;}
+  let first=true;$('bGps').classList.add('on');
+  if(!auto)toast('Đang xác định GPS (ưu tiên độ chính xác cao)…');
   watchId=navigator.geolocation.watchPosition(p=>{
-    gps={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy||20};
-    if(first){ first=false;
-      if(!auto||!roots.some(r=>r.on)) flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17)); /* tự chạy: chỉ kéo bản đồ về vị trí khi chưa mở file nào */
-      if(!auto) toast('Vị trí ±'+Math.round(gps.acc)+' m. Bấm GPS lần nữa để về vị trí, bấm khi đang ở giữa để tắt.',4000); }
+    const q=p.coords;
+    if(!Number.isFinite(q.latitude)||!Number.isFinite(q.longitude))return;
+    gps={lat:q.latitude,lon:q.longitude,acc:Number.isFinite(q.accuracy)?q.accuracy:99,
+      heading:Number.isFinite(q.heading)?q.heading:null,speed:Number.isFinite(q.speed)?q.speed:null,time:p.timestamp||Date.now()};
+    if(first){
+      first=false;
+      if(!auto||!roots.some(r=>r.on))flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17));
+      if(!auto)toast('GPS ±'+Math.round(gps.acc)+' m; chạm bảng GIS thực địa để chọn ranh',4400);
+    }else if(gpsFollowMode!=='off'){
+      // Làm mượt việc bám theo; cập nhật lớn thì chuyển ngay.
+      const cx=MX(gps.lon),cy=MY(gps.lat);
+      const jump=hav(LON(view.cx),LAT(view.cy),gps.lon,gps.lat);
+      const k=jump>150?1:.38;
+      view.cx+=(cx-view.cx)*k;view.cy+=(cy-view.cy)*k;
+    }
+    if(gpsFollowMode==='heading' && gps.speed!=null && gps.speed>1.0 && Number.isFinite(gps.heading)){
+      const target=-gps.heading*PI/180;
+      let delta=target-view.rot;
+      while(delta>PI)delta-=2*PI;while(delta< -PI)delta+=2*PI;
+      view.rot+=delta*.35;
+    }
+    updateFieldResult();fieldNearWarning();updateFieldUI();
+    if(curTitle==='GIS thực địa · GPS / ranh GPMB'&&!$('sheet').hidden)showFieldSheet();
     redraw();
-  },e=>{ stopGPS();
-    if(auto&&gpsWarned) return; gpsWarned=true;
-    if(location.protocol!=='https:') toast('GPS tự chạy chưa được: Chrome chặn khi mở từ file trong máy (content://). Hãy mở bằng đường link https.',6500);
-    else toast('Không lấy được vị trí ('+e.message+'). Hãy cho phép quyền Vị trí cho Chrome và cho trang này.',6000); },{enableHighAccuracy:true,maximumAge:2000,timeout:25000});
+  },e=>{
+    stopGPS();
+    if(auto&&gpsWarned)return;gpsWarned=true;
+    if(!['https:','http:'].includes(location.protocol)||!window.isSecureContext){
+      toast('GPS cần trang HTTPS. Hãy mở link GitHub Pages bằng Chrome thay vì file trong máy.',6500);
+    }else if(e.code===1)toast('Trang web chưa được cấp quyền Vị trí. Hãy bật trong cài đặt Chrome/Zalo.',6500);
+    else if(e.code===3)toast('GPS hết thời gian chờ. Hãy bật vị trí chính xác và thử ở nơi thoáng.',6500);
+    else toast('Chưa lấy được GPS: '+e.message,6000);
+  },{enableHighAccuracy:true,maximumAge:0,timeout:25000});
 }
 $('bGps').onclick=()=>{
-  if(watchId!=null){
-    if(gps){
-      const [x,y]=pxOf(MX(gps.lon),MY(gps.lat));
-      if(Math.hypot(x-W/2,y-H/2)>30){ flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17)); return; }
-    }
-    gpsUserOff=true; stopGPS(); toast('Đã tắt GPS'); return;
+  if(watchId==null){gpsUserOff=false;gpsFollowMode='follow';startGPS(false);return;}
+  if(gpsFollowMode==='off'){
+    gpsFollowMode='follow';if(gps)flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17));
+    toast('Đã bật bám vị trí. Vào bảng GIS thực địa để tắt GPS.');
+  }else{
+    gpsFollowMode='off';toast('Đã tạm dừng bám theo (GPS vẫn hoạt động). Chạm bảng GIS thực địa để tắt GPS.');
   }
-  gpsUserOff=false; startGPS(false);
+  updateFieldUI();
 };
-setTimeout(()=>{ if(!gpsUserOff&&watchId==null) startGPS(true); },3000); /* tự bật định vị sau vài giây */
+setTimeout(()=>{if(!gpsUserOff&&watchId==null)startGPS(true);},3000);
+updateFieldUI();
 
 /* ---------- Cảm ứng ---------- */
 const ptrs=new Map(); let moved=false, sx0=0, sy0=0, pinch=null, tapTimer=0, lastTap={t:0,x:0,y:0};
 function startPinch(){ const [a,b]=[...ptrs.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,angle:Math.atan2(b.y-a.y,b.x-a.x),x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
 cv.addEventListener('pointerdown',e=>{
+  bgInteracting=true;
   cancelAnimationFrame(anim);
   if(!sRes.hidden) sRes.hidden=true;
   if(document.activeElement===sIn) sIn.blur();
   try{ cv.setPointerCapture(e.pointerId); }catch(_){}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size===1){ moved=false; sx0=e.clientX; sy0=e.clientY; }
+  if(ptrs.size===1){
+    moved=false; sx0=e.clientX; sy0=e.clientY;
+    if(gpsFollowMode!=='off') {gpsFollowMode='off';updateFieldUI();}
+  }
   else { moved=true; if(ptrs.size===2) startPinch(); }
 });
 cv.addEventListener('pointermove',e=>{
@@ -1230,11 +1531,19 @@ function endPtr(e,cancel){
   if(wasSingle&&!moved&&!cancel) onTap(e.clientX,e.clientY);
   if(ptrs.size===1){ moved=true; const r=[...ptrs.values()][0]; sx0=r.x; sy0=r.y; }
   if(ptrs.size===2) startPinch();
+  if(ptrs.size===0){bgInteracting=false; scheduleBackground(80); if(useCache()&&VC){clearTimeout(vcTimer);vcTimer=setTimeout(()=>{if(!bgInteracting){renderCache();redraw();}},160);}}
 }
 cv.addEventListener('pointerup',e=>endPtr(e,false));
 cv.addEventListener('pointercancel',e=>endPtr(e,true));
-cv.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY,view.z-e.deltaY*0.0016); },{passive:false});
+let wheelIdle=0;
+cv.addEventListener('wheel',e=>{ e.preventDefault(); bgInteracting=true; zoomAt(e.clientX,e.clientY,view.z-e.deltaY*0.0016); clearTimeout(wheelIdle);wheelIdle=setTimeout(()=>{bgInteracting=false;scheduleBackground(80);},150); },{passive:false});
 function act(x,y){
+  if(pickingBoundary){
+    const h=hit(x,y);
+    if(h && (h.p.t==='ln'||h.p.t==='pg'))setFieldBoundary(h);
+    else toast('Hãy chạm vào đường hoặc phần trong đa giác KMZ/KML muốn dùng làm ranh');
+    return;
+  }
   if(measuring){ if(Math.hypot(x-W/2,y-H/2)<44) addMeasurePoint(); return; } /* chạm vào vòng tròn giữa màn hình cũng đặt được điểm */
   if(fs) return;
   const pl=hitPlace(x,y); if(pl){ showPlace(pl); return; }
@@ -1483,14 +1792,14 @@ fin.onchange=()=>{ const fs=[...fin.files]; fin.value=''; if(fs.length) openFile
 $('bProj').onclick=()=>{ if(curTitle==='Thư mục dự án'&&!$('sheet').hidden) closeSheet(); else { selected=null; pin=null; pjMenu=pjDel=pjRen=null; showProjects(); } };
 $('bLayers').onclick=()=>{ if(curTitle==='Lớp dữ liệu'&&!$('sheet').hidden) closeSheet(); else { selected=null; pin=null; showLayers(); } };
 $('bBase').onclick=()=>{ if(curTitle==='Bản đồ nền'&&!$('sheet').hidden) closeSheet(); else { selected=null; pin=null; showBase(); } };
-$('bFit').onclick=()=>{ const bb=robustBB(roots); if(bb) fitBB(bb); else toast('Chưa có dữ liệu để phóng tới'); };
+$('bFit').onclick=()=>{ const bb=robustBB(roots.filter(r=>r.on)); if(bb) fitBB(bb); else toast('Chưa có dữ liệu để phóng tới'); };
 /* kéo thả (máy tính) */
 window.addEventListener('dragover',e=>e.preventDefault());
 window.addEventListener('drop',e=>{ e.preventDefault(); const fs=[...(e.dataTransfer&&e.dataTransfer.files||[])]; if(fs.length) openFiles(fs); });
 
 resize();
 restoreProjects();
-window.__xemkmz={PJ,toggleProj,delProj,showProjects,drawNow:()=>{ ctx0.setTransform(1,0,0,1,0,0); draw(); },info:()=>({heavy,vcMode,hasVC:!!VC}),openFiles,view,roots,vnToWgs,wgsToVn,parseCoord,searchLocal:q=>searchLocal(q).map(r=>r.f.name)};
+window.__xemkmz={PJ,toggleProj,delProj,showProjects,drawNow:()=>{ ctx0.setTransform(1,0,0,1,0,0); draw(); },info:()=>({heavy,vcMode,hasVC:!!VC,hasBG:!!BG,bgRenderCount,bgDirty,bgInteracting}),openFiles,view,roots,vnToWgs,wgsToVn,parseCoord,searchLocal:q=>searchLocal(q).map(r=>r.f.name),nearestBoundary,selectRanh:setFieldBoundary,getField:()=>({gps,fieldBoundary,fieldResult,gpsFollowMode}),northUp};
 })();
 </script>
 </body>
