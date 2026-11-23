@@ -33,6 +33,11 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 #topInfo{display:inline-block;max-width:100%;background:rgba(20,32,43,.82);color:#fff;font-size:12px;padding:5px 10px;border-radius:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #zoom{position:absolute;right:8px;top:calc(8px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:6px}
 #zoom button{width:42px;height:42px;border:0;border-radius:10px;background:rgba(20,32,43,.88);color:#fff;font-size:22px;line-height:1}
+#zoom #roadLabelsBtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:18px;font-weight:700;line-height:1}
+#zoom #roadLabelsBtn small{font-size:9px;font-weight:500;line-height:1.1}
+#zoom #roadLabelsBtn.on{background:rgba(2,119,189,.97);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+#zoom #roadLabelsBtn:disabled{opacity:.5}
+
 #bar{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(20,32,43,.96);padding-bottom:env(safe-area-inset-bottom)}
 #bar button{flex:1;min-width:0;border:0;background:none;color:#cfd8dc;padding:7px 2px 6px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px}
 #bar button span.i{font-size:20px;line-height:24px}
@@ -89,7 +94,7 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
     <div id="sRes" hidden></div>
     <span id="topInfo">Chưa mở file</span>
   </div>
-  <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button></div>
+  <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button><button id="roadLabelsBtn" type="button" aria-label="Bật tắt tên đường" aria-pressed="true" title="Bật/tắt tên đường trên ảnh vệ tinh"><span>Aa</span><small>Đường</small></button></div>
   <div id="empty"><div>Bấm <b>Mở</b> để chọn file <b>KMZ</b> hoặc <b>KML</b> trong điện thoại.</div><button id="emptyOpen">📁 Mở file KMZ</button></div>
   <div id="measureBar" hidden>
     <div id="mText">Kéo bản đồ cho vòng tròn trùng điểm đầu, rồi bấm Đặt điểm</div>
@@ -1138,12 +1143,28 @@ function showLayers(){
   });
 }
 function refresh(){ if(curFill) openSheet(curTitle,curFill); }
+/* Nút Aa độc lập: chỉ điều khiển lớp nhãn của nền vệ tinh, không ảnh hưởng nhãn KMZ/KML. */
+function updateRoadLabelsBtn(){
+  const bt=$('roadLabelsBtn'), supported=!!BASES[baseIdx].lbl;
+  bt.disabled=!supported;
+  bt.classList.toggle('on',supported&&labelsOn);
+  bt.setAttribute('aria-pressed',String(supported&&labelsOn));
+  bt.setAttribute('aria-label',!supported?'Nền này không hỗ trợ tắt riêng tên đường':labelsOn?'Tắt tên đường':'Bật tên đường');
+  bt.title=supported?(labelsOn?'Ẩn tên đường, địa danh trên ảnh vệ tinh':'Hiện tên đường, địa danh trên ảnh vệ tinh'):'Chọn Vệ tinh Google hoặc Esri để tắt nhãn riêng';
+}
+function setRoadLabels(visible){
+  if(!BASES[baseIdx].lbl){ toast('Nền này có tên đường gắn sẵn. Hãy chọn Vệ tinh Google hoặc Esri.'); return; }
+  labelsOn=!!visible;
+  savePrefs(); updateRoadLabelsBtn(); redraw();
+  if(curTitle==='Bản đồ nền'&&!$('sheet').hidden) refresh();
+  toast(labelsOn?'Đã bật nhãn tên đường':'Đã tắt nhãn tên đường',1400);
+}
 function showBase(){
   openSheet('Bản đồ nền',b=>{
     BASES.forEach((x,i)=>{
-      b.append(el('div',{class:'row'},el('label',{},el('input',{type:'radio',name:'base',checked:i===baseIdx,onchange:()=>{ baseIdx=i; savePrefs(); refresh(); redraw(); }}),el('span',{text:x.name}))));
+      b.append(el('div',{class:'row'},el('label',{},el('input',{type:'radio',name:'base',checked:i===baseIdx,onchange:()=>{ baseIdx=i; savePrefs(); updateRoadLabelsBtn(); refresh(); redraw(); }}),el('span',{text:x.name}))));
     });
-    if(BASES[baseIdx].lbl) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:labelsOn,onchange:e=>{ labelsOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên đường, địa danh trên ảnh vệ tinh'}))));
+    if(BASES[baseIdx].lbl) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:labelsOn,onchange:e=>{ setRoadLabels(e.target.checked); }}),el('span',{text:'Hiện tên đường, địa danh trên ảnh vệ tinh'}))));
     if(BASES[baseIdx].hd) b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:hdOn,onchange:e=>{ hdOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Ảnh nét cao (tốn dữ liệu gấp khoảng 4 lần)'}))));
     b.append(el('div',{class:'cnt',text:'Mỗi nguồn có ảnh chụp ở thời điểm khác nhau. Chỗ nào ảnh Google cũ hay mờ thì thử đổi sang Esri, và ngược lại. Bản đồ nền cần có mạng; dữ liệu KMZ vẫn xem được khi không có mạng.'}));
   });
@@ -1524,6 +1545,8 @@ sClr.onclick=()=>{ sIn.value=''; cancelSuggest(); sIn.focus(); onInput(); };
 /* ---------- Nút ---------- */
 $('zin').onclick=()=>zoomAt(W/2,H/2,Math.round(view.z)+1);
 $('zout').onclick=()=>zoomAt(W/2,H/2,Math.round(view.z)-1);
+$('roadLabelsBtn').onclick=()=>setRoadLabels(!labelsOn);
+updateRoadLabelsBtn();
 $('shX').onclick=closeSheet;
 const fin=$('file');
 const openPick=()=>fin.click();
