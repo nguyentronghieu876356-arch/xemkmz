@@ -119,7 +119,7 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 const $=id=>document.getElementById(id);
 const cv=$('c'), ctx0=cv.getContext('2d'); let ctx=ctx0;
 let VC=null, vcTimer=0, heavy=false, vcMode='auto'; /* VC = ảnh lớp phủ vẽ sẵn của dữ liệu vector */
-let PTC=null, ptTimer=0; /* PTC = ảnh lớp phủ riêng cho điểm, để điểm co giãn theo bản đồ */
+let PTC=null, ptTimer=0; /* PTC = lớp điểm trong suốt, giới hạn độ phóng biểu tượng */
 const PI=Math.PI;
 let W=0,H=0,DPR=1;
 const view={cx:0.79,cy:0.455,z:5.5,rot:0};
@@ -179,9 +179,9 @@ const BASES=[
   {id:'osm',name:'Đường phố (OpenStreetMap)',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',max:19,attr:'© OpenStreetMap contributors'},
   {id:'none',name:'Nền trắng',url:null,max:19,attr:''}
 ];
-let baseIdx=0, labelsOn=true, showNames=true, kttId='105.75', hdOn=true;
-try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
-function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,v:vcMode})); }catch(e){} }
+let baseIdx=0, labelsOn=true, showNames=true, compactMarkers=true, kttId='105.75', hdOn=true;
+try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(typeof s.cm==='boolean') compactMarkers=s.cm; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
+function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,cm:compactMarkers,v:vcMode})); }catch(e){} }
 
 /* ---------- VN2000 ⇄ WGS84 ----------
    Elipxoit WGS84; tham số 7 phép chuyển VN-2000 → WGS 84 theo EPSG:6960
@@ -788,20 +788,39 @@ function drawLines(){
     i=j;
   }
 }
-/* Bán kính điểm theo zoom; không để các chấm đỏ giữ nguyên 14 px khi thu nhỏ. */
-function pointRadius(){ return clamp(5.5*Math.pow(2,(view.z-19)*0.75),1.35,7); }
+/* Biểu tượng KMZ phải giữ kích thước hợp lý trên màn hình, không phình lên khi zoom.
+   Tọa độ của đối tượng không đổi; chỉ kích thước ký hiệu hiển thị được giới hạn. */
+function pointRadius(){ return clamp(3.45*Math.pow(2,(view.z-19)*0.38),1.25,4.25); }
+function pointIconSize(s){
+  /* KML IconStyle scale quá lớn hoặc ảnh PNG cũ không được biến thành vòng tròn 56px. */
+  const base=11.5*Math.pow(2,(view.z-19)*0.18);
+  return clamp(base*Math.min(Math.max(Number(s.is)||1,0.65),1.2),5.5,15.0);
+}
+function markerSpacing(){
+  if(!compactMarkers || L.pt.length<100) return 0;
+  /* Dự án hàng nghìn điểm: chỉ làm gọn ký hiệu hiển thị, KHÔNG loại điểm GIS. */
+  if(L.pt.length>4000) return view.z<19?9:view.z<20.6?7:view.z<22?5:3;
+  return view.z<18?7:view.z<20?5:3;
+}
 function drawPointSymbols(){
   const S=SC(), ox=W/2-view.cx*S, oy=H/2-view.cy*S;
-  const radius=pointRadius(), outline=Math.max(0.6,Math.min(1.7,radius*0.28));
+  const radius=pointRadius(), outline=clamp(radius*0.30,0.55,1.05);
+  const spacing=markerSpacing(), occupied=spacing?new Set():null;
   for(const {f,p} of L.pt){
     const x=p.m[0]*S+ox, y=p.m[1]*S+oy;
-    if(x<-60||x>W+60||y<-60||y>H+60) continue;
-    const s=f.style;
-    if(s.img&&s.img._ok){
-      const sz=clamp(32*(s.is||1)*Math.pow(2,(view.z-19)*0.75),3,56), img=s.img;
+    if(x<-30||x>W+30||y<-30||y>H+30) continue;
+    const s=f.style, hasImg=!!(s.img&&s.img._ok);
+    if(occupied){
+      /* Giữ loại ký hiệu đỏ / biểu tượng ảnh độc lập để không che nhầm ranh. */
+      const cls=hasImg?'img:'+(s.href||'icon'):'dot:'+(s.ic&&s.ic.solid||'red');
+      const key=cls+'|'+Math.floor(x/spacing)+','+Math.floor(y/spacing);
+      if(occupied.has(key)) continue;
+      occupied.add(key);
+    }
+    if(hasImg){
+      const img=s.img, sz=pointIconSize(s);
       const k=Math.min(sz/img.naturalWidth,sz/img.naturalHeight);
-      const w=img.naturalWidth*k, h=img.naturalHeight*k;
-      ctx.drawImage(img,x-w/2,y-h/2,w,h);
+      ctx.drawImage(img,x-img.naturalWidth*k/2,y-img.naturalHeight*k/2,img.naturalWidth*k,img.naturalHeight*k);
     } else {
       ctx.beginPath(); ctx.arc(x,y,radius,0,2*PI); ctx.fillStyle=(s.ic&&s.ic.solid)||'#e53935'; ctx.fill();
       ctx.lineWidth=outline; ctx.strokeStyle='#fff'; ctx.stroke();
@@ -852,7 +871,7 @@ function drawPoints(){
   if(!PTC) renderPointCache();
   else {
     const k0=Math.pow(2,view.z-PTC.z);
-    if(k0>4||k0<0.25||((k0>1.8||k0<0.55)&&performance.now()-PTC.t>90)) renderPointCache();
+    if(k0>1.35||k0<0.65||((k0>1.15||k0<0.85)&&performance.now()-PTC.t>130)) renderPointCache();
   }
   if(PTC.cx!==view.cx||PTC.cy!==view.cy||PTC.z!==view.z){
     clearTimeout(ptTimer); ptTimer=setTimeout(()=>{ renderPointCache(); redraw(); },130);
@@ -1124,6 +1143,7 @@ function showPlace(pl){ pin=null; selected=null; plRen=plDel=null; redraw(); poi
 function showLayers(){
   openSheet('Lớp dữ liệu',b=>{
     b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:showNames,onchange:e=>{ showNames=e.target.checked; VC=null; PTC=null; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên điểm (tự ẩn khi quá dày)'}))));
+    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:compactMarkers,onchange:e=>{ compactMarkers=e.target.checked; PTC=null; clearTimeout(ptTimer); savePrefs(); redraw(); }}),el('span',{text:'Giảm chồng lấn vòng tròn/điểm (khuyên dùng)'}))));
     const vs=el('select',{class:'ktt',onchange:()=>{ vcMode=vs.value; VC=null; PTC=null; if(vcMode!=='auto') heavy=false; savePrefs(); rebuild(); }});
     for(const [v,t] of [['auto','Tự động (file nặng thì bật)'],['on','Luôn bật'],['off','Tắt']]) vs.append(el('option',{value:v,text:t}));
     vs.value=vcMode;
