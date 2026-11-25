@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
 <title>Xem KMZ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Roboto,"Segoe UI",sans-serif;background:#cfd8dc;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
@@ -37,6 +40,10 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 #zoom #roadLabelsBtn small{font-size:9px;font-weight:500;line-height:1.1}
 #zoom #roadLabelsBtn.on{background:rgba(2,119,189,.97);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
 #zoom #roadLabelsBtn:disabled{opacity:.5}
+#zoom #rotBtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;line-height:1}
+#zoom #rotBtn svg{width:26px;height:26px;transition:none}
+#zoom #rotBtn small{font-size:9px;font-weight:500;line-height:1.1}
+#zoom #rotBtn.on{background:rgba(2,119,189,.97);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
 
 #bar{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(20,32,43,.96);padding-bottom:env(safe-area-inset-bottom)}
 #bar button{flex:1;min-width:0;border:0;background:none;color:#cfd8dc;padding:7px 2px 6px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -94,7 +101,7 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
     <div id="sRes" hidden></div>
     <span id="topInfo">Chưa mở file</span>
   </div>
-  <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button><button id="roadLabelsBtn" type="button" aria-label="Bật tắt tên đường" aria-pressed="true" title="Bật/tắt tên đường trên ảnh vệ tinh"><span>Aa</span><small>Đường</small></button></div>
+  <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button><button id="roadLabelsBtn" type="button" aria-label="Bật tắt tên đường" aria-pressed="true" title="Bật/tắt tên đường trên ảnh vệ tinh"><span>Aa</span><small>Đường</small></button><button id="rotBtn" type="button" aria-label="Xoay bản đồ, la bàn" title="Chạm: bật/tắt chế độ xoay · Chạm đúp: về hướng Bắc · Ctrl+con lăn: xoay"><svg id="rotNeedle" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11.5" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.2"/><path d="M13 3.5 17 13H9z" fill="#ff5252"/><path d="M13 22.5 9 13h8z" fill="#fff"/></svg><small id="rotTxt">Xoay</small></button></div>
   <div id="empty"><div>Bấm <b>Mở</b> để chọn file <b>KMZ</b> hoặc <b>KML</b> trong điện thoại.</div><button id="emptyOpen">📁 Mở file KMZ</button></div>
   <div id="measureBar" hidden>
     <div id="mText">Kéo bản đồ cho vòng tròn trùng điểm đầu, rồi bấm Đặt điểm</div>
@@ -126,7 +133,26 @@ const view={cx:0.79,cy:0.455,z:5.5,rot:0};
 function unrotate(x,y){const a=-view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
 function rotateXY(x,y){const a=view.rot,c=Math.cos(a),t=Math.sin(a),dx=x-W/2,dy=y-H/2;return [W/2+dx*c-dy*t,H/2+dx*t+dy*c];}
 let dirty=false;
-function redraw(){ if(!dirty){ dirty=true; requestAnimationFrame(draw); } }
+function redraw(){ if(!dirty){ dirty=true; requestAnimationFrame(draw); } syncCompass(); }
+let rotMode=false;
+function syncCompass(){
+  const n=$('rotNeedle'); if(!n) return;
+  n.style.transform='rotate('+view.rot+'rad)';
+  let d=Math.round(((-view.rot*180/PI)%360+360)%360); if(d>359) d=0;
+  $('rotTxt').textContent=Math.abs(view.rot)<0.0087?'Xoay':d+'°';
+}
+function rotateAt(x,y,da){
+  const [ux,uy]=unrotate(x,y),S0=SC(), wx=view.cx+(ux-W/2)/S0, wy=view.cy+(uy-H/2)/S0;
+  view.rot+=da; const [nx,ny]=unrotate(x,y);
+  view.cx=wx-(nx-W/2)/S0; view.cy=wy-(ny-H/2)/S0; clampView(); redraw();
+}
+function resetNorth(){
+  cancelAnimationFrame(anim);
+  const r0=view.rot; let target=Math.round(r0/(2*PI))*2*PI; const t0=performance.now();
+  (function st(t){ const k=Math.min(1,(t-t0)/260), e=1-Math.pow(1-k,3);
+    rotateAt(W/2,H/2,(r0+(target-r0)*e)-view.rot);
+    if(k<1) anim=requestAnimationFrame(st); else { view.rot=0; redraw(); } })(t0);
+}
 
 /* ---------- Tiện ích ---------- */
 function el(t,a,...ch){
@@ -576,7 +602,8 @@ async function shareProj(p){
 function fmtSize(n){ return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB'; }
 function showProjects(){
   openSheet('Thư mục dự án',b=>{
-    b.append(el('div',{class:'btns',style:'margin:0 0 6px'},el('button',{text:'📁 Mở thêm file KMZ/KML',onclick:()=>fin.click()})));
+    b.append(el('div',{class:'btns',style:'margin:0 0 6px'},el('button',{text:'📁 Mở thêm file KMZ/KML',onclick:()=>fin.click()}),
+      installEv?el('button',{text:'📲 Cài thành ứng dụng',onclick:async()=>{ try{ installEv.prompt(); await installEv.userChoice; }catch(e){} installEv=null; refresh(); }}):null));
     if(!PJ.length) b.append(el('div',{class:'cnt',text:'Chưa có dự án. Mỗi file bạn mở sẽ được lưu ở đây để lần sau mở lại nhanh.'}));
     for(const p of PJ){
       const r=rootOf(p);
@@ -790,21 +817,21 @@ function drawLines(){
 }
 /* Biểu tượng KMZ phải giữ kích thước hợp lý trên màn hình, không phình lên khi zoom.
    Tọa độ của đối tượng không đổi; chỉ kích thước ký hiệu hiển thị được giới hạn. */
-function pointRadius(){ return clamp(3.45*Math.pow(2,(view.z-19)*0.38),1.25,4.25); }
+function pointRadius(){ return clamp(3.6*Math.pow(2,(view.z-19.5)*0.75),0.7,4.2); }
 function pointIconSize(s){
   /* KML IconStyle scale quá lớn hoặc ảnh PNG cũ không được biến thành vòng tròn 56px. */
   const base=11.5*Math.pow(2,(view.z-19)*0.18);
-  return clamp(base*Math.min(Math.max(Number(s.is)||1,0.65),1.2),5.5,15.0);
+  return clamp(base*Math.min(Math.max(Number(s.is)||1,0.65),1.2)*Math.pow(2,Math.min(0,view.z-19.5)*0.55),2.2,15.0);
 }
 function markerSpacing(){
   if(!compactMarkers || L.pt.length<100) return 0;
   /* Dự án hàng nghìn điểm: chỉ làm gọn ký hiệu hiển thị, KHÔNG loại điểm GIS. */
-  if(L.pt.length>4000) return view.z<19?9:view.z<20.6?7:view.z<22?5:3;
+  if(L.pt.length>4000) return view.z<17?14:view.z<18?11:view.z<19?9:view.z<20.6?7:view.z<22?5:3;
   return view.z<18?7:view.z<20?5:3;
 }
 function drawPointSymbols(){
   const S=SC(), ox=W/2-view.cx*S, oy=H/2-view.cy*S;
-  const radius=pointRadius(), outline=clamp(radius*0.30,0.55,1.05);
+  const radius=pointRadius(), outline=radius<1.6?0:clamp(radius*0.30,0.55,1.05);
   const spacing=markerSpacing(), occupied=spacing?new Set():null;
   for(const {f,p} of L.pt){
     const x=p.m[0]*S+ox, y=p.m[1]*S+oy;
@@ -871,7 +898,7 @@ function drawPoints(){
   if(!PTC) renderPointCache();
   else {
     const k0=Math.pow(2,view.z-PTC.z);
-    if(k0>1.35||k0<0.65||((k0>1.15||k0<0.85)&&performance.now()-PTC.t>130)) renderPointCache();
+    if(k0>1.2||k0<0.8||((k0>1.06||k0<0.94)&&performance.now()-PTC.t>130)) renderPointCache();
   }
   if(PTC.cx!==view.cx||PTC.cy!==view.cy||PTC.z!==view.z){
     clearTimeout(ptTimer); ptTimer=setTimeout(()=>{ renderPointCache(); redraw(); },130);
@@ -1299,6 +1326,11 @@ cv.addEventListener('pointermove',e=>{
   if(ptrs.size===1){
     if(!moved&&Math.hypot(e.clientX-sx0,e.clientY-sy0)<8) return;
     moved=true;
+    if(rotMode){
+      const ax=W/2, ay=H/2; let da=Math.atan2(e.clientY-ay,e.clientX-ax)-Math.atan2(p.y-ay,p.x-ax);
+      while(da>PI) da-=2*PI; while(da< -PI) da+=2*PI;
+      p.x=e.clientX; p.y=e.clientY; rotateAt(ax,ay,da); return;
+    }
     const S=SC(), a=-view.rot, dx=e.clientX-p.x,dy=e.clientY-p.y; view.cx-=(dx*Math.cos(a)-dy*Math.sin(a))/S; view.cy-=(dx*Math.sin(a)+dy*Math.cos(a))/S; clampView();
     p.x=e.clientX; p.y=e.clientY; redraw();
   } else if(ptrs.size===2){
@@ -1323,7 +1355,7 @@ function endPtr(e,cancel){
 }
 cv.addEventListener('pointerup',e=>endPtr(e,false));
 cv.addEventListener('pointercancel',e=>endPtr(e,true));
-cv.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY,view.z-e.deltaY*0.0016); },{passive:false});
+cv.addEventListener('wheel',e=>{ e.preventDefault(); if(e.ctrlKey||e.metaKey){ rotateAt(e.clientX,e.clientY,-e.deltaY*0.0035); return; } zoomAt(e.clientX,e.clientY,view.z-e.deltaY*0.0016); },{passive:false});
 function act(x,y){
   if(measuring){ if(Math.hypot(x-W/2,y-H/2)<44) addMeasurePoint(); return; } /* chạm vào vòng tròn giữa màn hình cũng đặt được điểm */
   if(fs) return;
@@ -1566,6 +1598,15 @@ sClr.onclick=()=>{ sIn.value=''; cancelSuggest(); sIn.focus(); onInput(); };
 $('zin').onclick=()=>zoomAt(W/2,H/2,Math.round(view.z)+1);
 $('zout').onclick=()=>zoomAt(W/2,H/2,Math.round(view.z)-1);
 $('roadLabelsBtn').onclick=()=>setRoadLabels(!labelsOn);
+(function(){ const b=$('rotBtn'); let t=0;
+  b.onclick=()=>{
+    const now=performance.now();
+    if(now-t<320){ t=0; rotMode=false; b.classList.remove('on'); resetNorth(); toast('Đã về hướng Bắc'); return; }
+    t=now; rotMode=!rotMode; b.classList.toggle('on',rotMode);
+    toast(rotMode?'Chế độ xoay: kéo 1 ngón để xoay. Chạm lại để tắt, chạm đúp về hướng Bắc':'Đã tắt chế độ xoay');
+  };
+  syncCompass();
+})();
 updateRoadLabelsBtn();
 $('shX').onclick=closeSheet;
 const fin=$('file');
@@ -1580,8 +1621,31 @@ $('bFit').onclick=()=>{ const bb=robustBB(roots); if(bb) fitBB(bb); else toast('
 window.addEventListener('dragover',e=>e.preventDefault());
 window.addEventListener('drop',e=>{ e.preventDefault(); const fs=[...(e.dataTransfer&&e.dataTransfer.files||[])]; if(fs.length) openFiles(fs); });
 
+/* ---------- Cài thành ứng dụng + nhận file từ nút Chia sẻ của Android ---------- */
+let installEv=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); installEv=e; });
+window.addEventListener('appinstalled',()=>{ installEv=null; toast('Đã cài ứng dụng Xem KMZ'); });
+try{ if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){}
+async function takeSharedFile(){
+  if(!/[?&]share=1(&|$)/.test(location.search)||!window.caches) return;
+  try{
+    const c=await caches.open('xemkmz-share'), files=[];
+    for(const k of await c.keys()){
+      const r=await c.match(k); if(!r) continue;
+      const b=await r.blob(); let nm='file';
+      try{ nm=decodeURIComponent(r.headers.get('X-Filename')||nm); }catch(_){}
+      nm=nm.replace(/\.(kmz|kml)\.txt$/i,'.$1');
+      if(!/\.(kmz|kml)$/i.test(nm)){ const h=new Uint8Array(await b.slice(0,2).arrayBuffer()); nm+=(h[0]===0x50&&h[1]===0x4b)?'.kmz':'.kml'; }
+      files.push(new File([b],nm)); await c.delete(k);
+    }
+    try{ history.replaceState(null,'',location.pathname); }catch(_){}
+    if(files.length) await openFiles(files); else toast('Không nhận được file chia sẻ');
+  }catch(e){ toast('Không nhận được file chia sẻ: '+e.message,5000); }
+}
+if('launchQueue' in window){ try{ launchQueue.setConsumer(async p=>{ const fs=[]; for(const h of (p.files||[])) fs.push(await h.getFile()); if(fs.length) openFiles(fs); }); }catch(e){} }
+
 resize();
-restoreProjects();
+restoreProjects().then(takeSharedFile,takeSharedFile);
 window.__xemkmz={PJ,toggleProj,delProj,showProjects,drawNow:()=>{ ctx0.setTransform(1,0,0,1,0,0); draw(); },info:()=>({heavy,vcMode,hasVC:!!VC}),openFiles,view,roots,vnToWgs,wgsToVn,parseCoord,searchLocal:q=>searchLocal(q).map(r=>r.f.name)};
 })();
 </script>
