@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- P.QLDA1 GIS V4: dấu cộng đo 4x, hiển thị X/Y VN-2000 theo KTT được chọn -->
 <html lang="vi">
 <head>
 <meta charset="utf-8">
@@ -103,7 +104,7 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
   <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button><button id="roadLabelsBtn" type="button" aria-label="Bật tắt tên đường" aria-pressed="true" title="Bật/tắt tên đường trên ảnh vệ tinh"><span>Aa</span><small>Đường</small></button></div>
   <div id="empty"><div>Bấm <b>Mở</b> để chọn file <b>KMZ</b> hoặc <b>KML</b> trong điện thoại.</div><button id="emptyOpen">📁 Mở file KMZ</button></div>
   <div id="measureBar" hidden>
-    <div id="mText">Kéo dấu + nhỏ đến điểm cần đo, rồi bấm Đặt điểm</div>
+    <div id="mText">Kéo dấu + đến điểm cần đo, rồi bấm Đặt điểm</div>
     <div class="btns"><button id="mAdd" class="main">＋ Đặt điểm</button><button id="mUndo">↩</button><button id="mClear">Xóa</button><button id="mDone">Xong</button></div>
   </div>
   <div id="sheet" hidden><div class="sh"><b id="shT"></b><button id="shX" aria-label="Đóng">✕</button></div><div id="shB"></div></div>
@@ -194,7 +195,7 @@ function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASE
 if(kttId!=='105'&&kttId!=='105.75') kttId='105.75';
 function crsLabel(){ return kttId==='105'?'Đồng Tháp · 105°00′':'Tiền Giang · 105°45′'; }
 function updateCrsQuick(){ $('crsQuick').textContent='VN2000 · '+crsLabel(); }
-$('crsQuick').onclick=()=>{ kttId=kttId==='105'?'105.75':'105'; savePrefs(); updateCrsQuick(); if(!$('sheet').hidden) refresh(); toast('Hệ VN2000: '+crsLabel()); };
+$('crsQuick').onclick=()=>{ kttId=kttId==='105'?'105.75':'105'; savePrefs(); updateCrsQuick(); if(!$('sheet').hidden) refresh(); if(measuring){ updateMeasure(); redraw(); } toast('Hệ VN2000: '+crsLabel()); };
 updateCrsQuick();
 
 /* ---------- VN2000 ⇄ WGS84 ----------
@@ -908,10 +909,10 @@ function drawSelected(){
 /* Bắt đỉnh và giao điểm đường KML ở gần tâm màn hình khi đo. */
 let snapMemo={t:0,key:'',result:null};
 function measureSnap(force=false){
-  const key=[view.cx,view.cy,view.z,view.rot,L.ln.length,L.pg.length].join('/');
+  const key=[view.cx,view.cy,view.z,view.rot,L.ln.length,L.pg.length,L.pt.length].join('/');
   if(!force&&snapMemo.key===key) return snapMemo.result;
   if(!force&&performance.now()-snapMemo.t<65) return snapMemo.result;
-  const radius=22,S=SC(), segs=[]; let best=null, vertex=null;
+  const radius=22,S=SC(), segs=[]; let best=null, vertex=null, point=null;
   const put=(x,y,type,d)=>{ if(d<=radius&&(!best||d<best.d)) best={x,y,type,d}; };
   function collect(m,closed){
     if(segs.length>=180) return;
@@ -929,6 +930,13 @@ function measureSnap(force=false){
     }
   }
   const wx=view.cx,wy=view.cy,reach=radius/S;
+  /* Cho phép bắt trực tiếp vào cả các đối tượng Point trong KMZ/KML. */
+  for(const {p} of L.pt){
+    const mx=p.m[0],my=p.m[1];
+    if(Math.abs(mx-wx)>reach||Math.abs(my-wy)>reach) continue;
+    const x=(mx-wx)*S+W/2,y=(my-wy)*S+H/2,d=Math.hypot(x-W/2,y-H/2);
+    if(d<=radius&&(!point||d<point.d)) point={x,y,type:'điểm',d};
+  }
   for(const {p} of L.ln){ if(p.bb[2]<wx-reach||p.bb[0]>wx+reach||p.bb[3]<wy-reach||p.bb[1]>wy+reach) continue; collect(p.m,false); if(segs.length>=180) break; }
   if(segs.length<180) for(const {p} of L.pg){ if(p.bb[2]<wx-reach||p.bb[0]>wx+reach||p.bb[3]<wy-reach||p.bb[1]>wy+reach) continue; for(const r of p.rings){ collect(r.m,true);if(segs.length>=180) break; } if(segs.length>=180) break; }
   /* Ưu tiên giao cắt hai đoạn thẳng, sau đó tới đỉnh. */
@@ -943,7 +951,7 @@ function measureSnap(force=false){
       if(d<radius&&(!best||d<best.d)) best={x,y,type:'giao',d};
     }
   }
-  const item=best||vertex;
+  const item=best||((point&&vertex)?(point.d<=vertex.d?point:vertex):(point||vertex));
   const result=item?{...item,lon:LON(view.cx+(item.x-W/2)/S),lat:LAT(view.cy+(item.y-H/2)/S)}:null;
   snapMemo={t:performance.now(),key,result}; return result;
 }
@@ -956,7 +964,8 @@ function measureInfo(){
   const tot=(n>=2?pathLen(mpts,false):0)+seg;
   const pts=mpts.concat(c);
   const area=pts.length>=6?ringArea(pts):0, per=pts.length>=6?pathLen(pts,true):0;
-  return {c,n,seg,tot,area,per,pts,snap};
+  const vn=snap?wgsToVn(c[1],c[0]):null; /* VN-2000: [X bắc, Y đông], theo KTT đang chọn */
+  return {c,n,seg,tot,area,per,pts,snap,vn};
 }
 function drawMeasure(){
   if(!measuring) return;
@@ -967,16 +976,24 @@ function drawMeasure(){
     ctx.beginPath(); trace(m,false); ctx.lineWidth=3; ctx.strokeStyle='#ff6d00'; ctx.stroke();
     for(let i=0;i<m.length-2;i+=2){ const [x,y]=pxOf(m[i],m[i+1]); ctx.beginPath(); ctx.arc(x,y,6,0,2*PI); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle='#ff6d00'; ctx.stroke(); }
   }
-  /* Dấu cộng nét mảnh ~1 mm (4 px CSS), không dùng vòng tròn. */
+  /* Dấu cộng bắt điểm: 16 px CSS (4 lần kích thước 4 px ở bản V4), vẫn nét mảnh. */
   const tx=I.snap?I.snap.x:cx, ty=I.snap?I.snap.y:cy;
-  ctx.lineWidth=1; ctx.strokeStyle='#fff'; ctx.beginPath();
-  ctx.moveTo(tx-2,ty);ctx.lineTo(tx+2,ty);ctx.moveTo(tx,ty-2);ctx.lineTo(tx,ty+2);ctx.stroke();
-  ctx.lineWidth=.6; ctx.strokeStyle=I.snap?'#00e5ff':'#ff6d00'; ctx.stroke();
-  if(I.snap){ ctx.font='600 11px system-ui,sans-serif';ctx.fillStyle='#00e5ff';ctx.fillText('Bắt '+I.snap.type,tx+7,ty-8); }
-  /* số đo hiện ngay tại điểm kéo */
-  const lines=[]; if(I.n>=1){ lines.push('Đoạn '+fmtLen(I.seg)); if(I.n>=2) lines.push('Tổng '+fmtLen(I.tot)); if(I.pts.length>=6) lines.push('S = '+I.area.toFixed(1)+' m²'); }
-  ctx.font='700 14px system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=4; ctx.lineJoin='round';
-  lines.forEach((t,i)=>{ const x=cx+22, y=cy-26-(lines.length-1-i)*18; ctx.strokeStyle='rgba(0,0,0,.8)'; ctx.strokeText(t,x,y); ctx.fillStyle=i===0?'#ffcc80':'#fff'; ctx.fillText(t,x,y); });
+  const crossHalf=8;
+  ctx.beginPath(); ctx.moveTo(tx-crossHalf,ty);ctx.lineTo(tx+crossHalf,ty);
+  ctx.moveTo(tx,ty-crossHalf);ctx.lineTo(tx,ty+crossHalf);
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.stroke();
+  ctx.lineWidth=.9; ctx.strokeStyle=I.snap?'#00e5ff':'#ff6d00'; ctx.stroke();
+  if(I.snap){ ctx.font='600 11px system-ui,sans-serif';ctx.fillStyle='#00e5ff';ctx.fillText('Bắt '+I.snap.type,tx+12,ty-12); }
+  /* Kết quả màu vàng và X/Y VN-2000 của điểm đã bắt, theo múi chiếu được chọn. */
+  const lines=[];
+  if(I.n>=1){ lines.push('Đoạn '+fmtLen(I.seg)); if(I.n>=2) lines.push('Tổng '+fmtLen(I.tot)); if(I.pts.length>=6) lines.push('S = '+I.area.toFixed(1)+' m²'); }
+  if(I.snap&&I.vn){
+    if(!I.n) lines.push('Bắt '+I.snap.type);
+    lines.push('X: '+I.vn[0].toFixed(3)+' m');
+    lines.push('Y: '+I.vn[1].toFixed(3)+' m');
+  }
+  ctx.font='700 13px system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=4; ctx.lineJoin='round';
+  lines.forEach((t,i)=>{ const x=cx+22, y=cy-26-(lines.length-1-i)*18; ctx.strokeStyle='rgba(0,0,0,.8)'; ctx.strokeText(t,x,y); ctx.fillStyle=(i===0||t.startsWith('X:')||t.startsWith('Y:'))?'#ffcc80':'#fff'; ctx.fillText(t,x,y); });
   ctx.restore();
 }
 function drawPin(){
@@ -1118,7 +1135,7 @@ function showFeature(sel){
   });
 }
 function kttSelect(onchange){
-  const o=el('select',{class:'ktt',onchange:()=>{ kttId=o.value; savePrefs(); updateCrsQuick(); if(onchange) onchange(); }});
+  const o=el('select',{class:'ktt',onchange:()=>{ kttId=o.value; savePrefs(); updateCrsQuick(); if(onchange) onchange(); if(measuring){ updateMeasure(); redraw(); } }});
   o.append(el('option',{value:'105.75',text:'Tiền Giang · 105°45′ (105,75°)'}));
   o.append(el('option',{value:'105',text:'Đồng Tháp · 105°00′'}));
   o.value=kttId;
@@ -1279,10 +1296,18 @@ function showBase(){
 function updateMeasure(){
   const t=$('mText'); if(!measuring) return;
   const I=measureInfo(); let txt;
-  if(!I.n) txt='Di chuyển dấu + nhỏ đến điểm cần đo (tự bắt giao/đỉnh), rồi bấm Đặt điểm';
-  if(I.snap) txt+='\nĐã bắt '+I.snap.type+' bản vẽ';
-  else { txt='Đoạn đang kéo: '+fmtLen(I.seg)+(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'');
-    if(I.pts.length>=6) txt+='\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area); }
+  if(!I.n) txt='Di chuyển dấu + đến điểm cần đo (tự bắt giao/đỉnh), rồi bấm Đặt điểm';
+  else {
+    txt='Đoạn đang kéo: '+fmtLen(I.seg)+(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'');
+    if(I.pts.length>=6) txt+='\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area);
+  }
+  if(I.snap&&I.vn){
+    /* X = tọa độ Bắc, Y = tọa độ Đông; dùng KTT Tiền Giang hoặc Đồng Tháp đang chọn. */
+    const pos='X: '+I.vn[0].toFixed(3)+' m · Y: '+I.vn[1].toFixed(3)+' m';
+    txt= 'Đoạn đang kéo: '+fmtLen(I.seg)+'\n'+pos+'\nĐã bắt '+I.snap.type+' · '+crsLabel()
+      +(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'')
+      +(I.pts.length>=6?'\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area):'');
+  }
   if(t.textContent!==txt){ t.style.whiteSpace='pre-line'; t.textContent=txt; }
 }
 function addMeasurePoint(){ const snap=measureSnap(true);mpts.push(snap?snap.lon:LON(view.cx),snap?snap.lat:LAT(view.cy)); updateMeasure(); redraw(); }
