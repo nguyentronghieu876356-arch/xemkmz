@@ -80,6 +80,11 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 .pjT{flex:1;min-width:0}
 .pjT b{display:block;font-size:14px;color:#14202b;word-break:break-word}
 .pjT small{display:block;font-size:12px;color:#78909c}
+/* Nút con mắt trong danh sách dự án: mở / ẩn lớp trên bản đồ */
+.pjEye{display:grid;place-items:center;flex:none;width:38px;height:38px;border:1px solid #cfd8dc;border-radius:10px;background:#edf8ff;color:#0277bd;cursor:pointer;padding:0}
+.pjEye svg{width:22px;height:22px;display:block}
+.pjEye.off{background:#f3f5f6;color:#90a4ae;border-color:#e1e6ea}
+.pjEye:focus-visible{outline:2px solid #0277bd;outline-offset:2px}
 .pjM{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;padding:4px 0 10px;border-bottom:1px solid #eceff1;background:#f6f9fb;margin:0 -14px;padding-left:14px;padding-right:14px}
 .pjM button{border:0;background:#fff;border:1px solid #cfd8dc;color:#263238;border-radius:8px;padding:8px 12px;font-size:13px}
 .pjR input{flex:1 1 100%;min-width:0;font-size:15px;padding:8px 10px;border:1px solid #0277bd;border-radius:8px;color:#14202b;background:#fff}
@@ -220,9 +225,9 @@ const BASES=[
   {id:'osm',name:'Đường phố (OpenStreetMap)',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',max:19,attr:'© OpenStreetMap contributors'},
   {id:'none',name:'Nền trắng',url:null,max:19,attr:''}
 ];
-let baseIdx=0, labelsOn=true, showNames=true, compactMarkers=true, kttId='105.75', hdOn=true;
-try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(typeof s.cm==='boolean') compactMarkers=s.cm; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
-function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,cm:compactMarkers,v:vcMode})); }catch(e){} }
+let baseIdx=0, labelsOn=true, showNames=true, adminLabelsOn=true, compactMarkers=true, kttId='105.75', hdOn=true;
+try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.al==='boolean') adminLabelsOn=s.al; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(typeof s.cm==='boolean') compactMarkers=s.cm; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
+function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,al:adminLabelsOn,k:kttId,h:hdOn,cm:compactMarkers,v:vcMode})); }catch(e){} }
 
 /* Hai kinh tuyến trục VN-2000 do người dùng chọn: 105°45′ = 105.75°, không phải 105.45°. */
 if(kttId!=='105'&&kttId!=='105.75') kttId='105.75';
@@ -319,7 +324,7 @@ function drawTileLayer(layer,fallback,zoff){
 
 /* ---------- Dữ liệu KML ---------- */
 const roots=[];
-let L={ov:[],pg:[],ln:[],pt:[]};
+let L={ov:[],pg:[],ln:[],pt:[]}; let styledLabelCount=0;
 function newNode(name){ return {name:name||'(không tên)',kids:[],feats:[],on:true,open:true,parent:null}; }
 function rebuild(){
   L={ov:[],pg:[],ln:[],pt:[]};
@@ -338,6 +343,7 @@ function rebuild(){
   L.ln.sort((a,b)=>{ const x=sk(a.f,0),y=sk(b.f,0); return x<y?-1:x>y?1:0; });
   for(const it of L.pg) it.k=sk(it.f,1);
   for(const it of L.ln) it.k=sk(it.f,0);
+  styledLabelCount=L.pt.reduce((n,it)=>n+(it.f.name&&it.f.style.labelStyle?1:0),0);
   VC=null; PTC=null; clearTimeout(ptTimer);
   if(vcMode==='auto'&&!heavy&&(L.pg.length+L.ln.length+L.pt.length)>3000) heavy=true;
   redraw();
@@ -426,7 +432,16 @@ function parseStyle(e){
   const s={};
   const ls=kid(e,'LineStyle'); if(ls){ const c=kc(tx(ls,'color')); if(c) s.lc=c; const w=parseFloat(tx(ls,'width')); if(w>0) s.lw=w; }
   const ps=kid(e,'PolyStyle'); if(ps){ const c=kc(tx(ps,'color')); if(c) s.pc=c; if(tx(ps,'fill')==='0') s.fill=false; if(tx(ps,'outline')==='0') s.outline=false; }
-  const is=kid(e,'IconStyle'); if(is){ const c=kc(tx(is,'color')); if(c) s.ic=c; const sc=parseFloat(tx(is,'scale')); if(sc>0) s.is=sc; const ic=kid(is,'Icon'); if(ic){ const h=tx(ic,'href'); if(h) s.href=h; } }
+  const is=kid(e,'IconStyle'); if(is){ const c=kc(tx(is,'color')); if(c) s.ic=c; const sc=parseFloat(tx(is,'scale')); if(Number.isFinite(sc)&&sc>=0) s.is=sc; const ic=kid(is,'Icon'); if(ic){ const h=tx(ic,'href'); if(h) s.href=h; } }
+  /* Google Earth lưu nhãn địa danh trong LabelStyle; IconStyle scale=0 có nghĩa chỉ hiện chữ. */
+  const label=kid(e,'LabelStyle');
+  if(label){
+    s.labelStyle=true;
+    const col=kc(tx(label,'color'));
+    if(col) s.labelColor=col.css;
+    const scale=parseFloat(tx(label,'scale'));
+    if(Number.isFinite(scale)&&scale>=0) s.labelScale=scale;
+  }
   return s;
 }
 function gatherStyles(doc,pend){
@@ -635,6 +650,18 @@ function showProjects(){
       const info=el('div',{class:'pjT',onclick:()=>{ if(p.on&&r){ const bb=robustBB([r]); if(bb) fitBB(bb); } }});
       info.append(el('b',{text:p.name}),el('small',{text:fmtSize(p.size)+' · '+(p.on?(r?nodeCount(r)+' đối tượng':'đang mở…'):'đang tắt')}));
       row.append(info);
+      /* Mắt mở: dự án đang hiện trên bản đồ. Mắt gạch: đã ẩn. Chạm để đổi trạng thái. */
+      const eye=el('button',{
+        class:'pjEye'+(p.on?'':' off'),type:'button',
+        title:p.on?'Đang hiển thị – chạm để ẩn':'Đang ẩn – chạm để hiện',
+        'aria-label':(p.on?'Ẩn lớp dự án ':'Hiện lớp dự án ')+p.name,
+        'aria-pressed':p.on?'true':'false',
+        onclick:()=>toggleProj(p)
+      });
+      eye.innerHTML=p.on
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A11.6 11.6 0 0 1 12 5c6.3 0 10 7 10 7a14.1 14.1 0 0 1-3.4 4.1"/><path d="M6.3 6.5C3.6 8.4 2 12 2 12s3.7 7 10 7a10 10 0 0 0 4.4-1"/><path d="M10 10a3 3 0 0 0 4 4"/></svg>';
+      row.append(eye);
       row.append(el('button',{class:'mini',text:'⋯','aria-label':'Tùy chọn',onclick:()=>{ pjMenu=pjMenu===p.id?null:p.id; pjDel=null; pjRen=null; refresh(); }}));
       b.append(row);
       if(pjMenu===p.id&&pjRen===p.id){
@@ -952,7 +979,9 @@ function drawPointSymbols(){
   for(const {f,p} of L.pt){
     const x=p.m[0]*S+ox, y=p.m[1]*S+oy;
     if(x<-30||x>W+30||y<-30||y>H+30) continue;
-    const s=f.style, hasImg=!!(s.img&&s.img._ok);
+    const s=f.style;
+    if(s.is===0) continue; /* KML chỉ có nhãn: không vẽ chấm đỏ giả */
+    const hasImg=!!(s.img&&s.img._ok);
     if(occupied){
       /* Giữ loại ký hiệu đỏ / biểu tượng ảnh độc lập để không che nhầm ranh. */
       const cls=hasImg?'img:'+(s.href||'icon'):'dot:'+(s.ic&&s.ic.solid||'red');
@@ -972,17 +1001,53 @@ function drawPointSymbols(){
 }
 /* Nhãn vẫn là đối tượng GIS riêng, tự ẩn khi thu nhỏ hoặc khi quá dày.
    Không xoá đối tượng: người dùng vẫn có thể chạm điểm để xem đầy đủ thông tin. */
+/* Nhãn xã/phường/địa danh trong KMZ có LabelStyle: màu chữ và vị trí do KML cung cấp.
+   Vẽ chữ trên một lớp riêng (không bị phóng theo ảnh đệm) và chống chồng lấn bằng khung chữ. */
+function drawStyledKMLLabels(){
+  if(!adminLabelsOn||!styledLabelCount||view.z<8.5) return;
+  const S=SC(),ox=W/2-view.cx*S,oy=H/2-view.cy*S;
+  const items=[];
+  for(const {f,p} of L.pt){
+    const st=f.style;
+    if(!st.labelStyle||st.labelScale===0||!f.name) continue;
+    const x=p.m[0]*S+ox,y=p.m[1]*S+oy;
+    if(x < -170 || x > W+170 || y < -35 || y > H+35) continue;
+    items.push({x,y,name:f.name,style:st});
+  }
+  if(!items.length) return;
+  const maxLabels=view.z<10?28:view.z<12?58:view.z<14?90:140;
+  /* Vùng trung tâm được ưu tiên, tránh một điểm sát mép che toàn bộ tên khác. */
+  items.sort((a,b)=>Math.hypot(a.x-W/2,a.y-H/2)-Math.hypot(b.x-W/2,b.y-H/2));
+  const boxes=[];let used=0;
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  for(const it of items){
+    const fs=clamp(19*(it.style.labelScale??1),12,19);
+    ctx.font='600 '+fs.toFixed(1)+'px system-ui,Roboto,sans-serif';
+    const half=ctx.measureText(it.name).width/2+7;
+    const b=[it.x-half,it.y-fs/2-5,it.x+half,it.y+fs/2+5];
+    if(b[0]<5||b[2]>W-5||b[1]<5||b[3]>H-5)continue;
+    let overlap=false;
+    for(const o of boxes){if(b[0]<o[2]&&b[2]>o[0]&&b[1]<o[3]&&b[3]>o[1]){overlap=true;break;}}
+    if(overlap)continue;
+    boxes.push(b);
+    ctx.lineWidth=3.3;ctx.strokeStyle='rgba(19,7,21,.90)';ctx.strokeText(it.name,it.x,it.y);
+    ctx.fillStyle=it.style.labelColor||'#ff33ff';ctx.fillText(it.name,it.x,it.y);
+    if(++used>=maxLabels)break;
+  }
+  ctx.restore();
+}
 function drawPointLabels(){
+  /* Nhãn hành chính cần hiển thị cả ở zoom xa; tên điểm địa chính khác vẫn được hạn chế. */
+  drawStyledKMLLabels();
   if(!showNames || view.z<16) return;
   const S=SC(), ox=W/2-view.cx*S, oy=H/2-view.cy*S;
   const visible=[];
   for(const {f,p} of L.pt){
-    if(!f.name) continue;
+    if(!f.name || f.style.labelStyle) continue; /* Tránh vẽ trùng nhãn xã theo màu trắng */
     const x=p.m[0]*S+ox, y=p.m[1]*S+oy;
     if(x<0||x>W||y<0||y>H) continue;
     visible.push({x,y,name:f.name});
   }
-  /* Ở vùng có nhiều thửa/điểm, nhãn chỉ xuất hiện khi zoom đủ gần. */
   if((visible.length>90&&view.z<19.6)||(visible.length>200&&view.z<20.5)) return;
   const dense=visible.length>50;
   const cellW=dense?160:120, cellH=dense?42:28;
@@ -1372,7 +1437,8 @@ function longPressMenu(x,y){
 /* ---------- Bảng lớp ---------- */
 function showLayers(){
   openSheet('Lớp dữ liệu',b=>{
-    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:showNames,onchange:e=>{ showNames=e.target.checked; VC=null; PTC=null; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên điểm (tự ẩn khi quá dày)'}))));
+    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:adminLabelsOn,onchange:e=>{ adminLabelsOn=e.target.checked; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên xã/phường màu hồng từ KMZ'}))));
+    b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:showNames,onchange:e=>{ showNames=e.target.checked; VC=null; PTC=null; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên các điểm khác (tự ẩn khi quá dày)'}))));
     b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:compactMarkers,onchange:e=>{ compactMarkers=e.target.checked; PTC=null; clearTimeout(ptTimer); savePrefs(); redraw(); }}),el('span',{text:'Giảm chồng lấn vòng tròn/điểm (khuyên dùng)'}))));
     b.append(el('div',{class:'row'},el('span',{text:'VN-2000:'}),kttSelect(()=>{updateCrsQuick();if(measuring)updateMeasure();refresh();})));
     const vs=el('select',{class:'ktt',onchange:()=>{ vcMode=vs.value; VC=null; PTC=null; if(vcMode!=='auto') heavy=false; savePrefs(); rebuild(); }});
