@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
-<title>Xem KMZ + CAD</title>
+<title>Google Earth AI - QLDA1 - Ban GT</title>
+<meta name="description" content="Google Earth AI - QLDA1 - Ban GT: đọc KMZ/KML, DWG/DXF/DGN, ghi hành trình GPS, ghi chú và đo VN-2000.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -91,6 +92,12 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
 #empty button{margin-top:10px;border:0;background:#0277bd;color:#fff;border-radius:10px;padding:10px 22px;font-size:15px}
 #toast{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));background:rgba(0,0,0,.82);color:#fff;border-radius:18px;padding:8px 16px;font-size:13px;max-width:86%;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
 #toast.show{opacity:1}
+
+#crsQuick{pointer-events:auto;border:1px solid rgba(255,255,255,.2);background:rgba(20,32,43,.88);color:#fff;border-radius:14px;padding:5px 10px;font-size:11px;cursor:pointer}
+#trackStatus{position:absolute;left:10px;bottom:calc(66px + env(safe-area-inset-bottom));color:#fff;background:rgba(10,80,55,.94);border:1px solid #5ce3b1;border-radius:12px;padding:8px 11px;font-size:12px;pointer-events:none}
+#trackStatus[hidden]{display:none}
+#bar button{font-size:10px}
+#app.fs #crsQuick,#app.fs #trackStatus{display:none!important}
 </style>
 
 <style>
@@ -103,12 +110,12 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
   <div id="top">
     <form id="sForm" autocomplete="off"><input id="sIn" type="text" enterkeyhint="search" autocomplete="off" placeholder="Toạ độ, VN2000, địa danh, tên thửa…"><button type="button" id="sClr" hidden aria-label="Xoá">✕</button><button type="submit" aria-label="Tìm">🔍</button></form>
     <div id="sRes" hidden></div>
-    <span id="topInfo">Chưa mở file</span>
+    <span id="topInfo">Chưa mở file</span><button id="crsQuick" type="button" aria-label="Chọn múi chiếu VN-2000">VN-2000 · Tiền Giang 105°45′</button>
   </div>
   <div id="zoom"><button id="zin" aria-label="Phóng to">＋</button><button id="zout" aria-label="Thu nhỏ">－</button><button id="fsBtn" aria-label="Toàn màn hình">⛶</button><button id="roadLabelsBtn" type="button" aria-label="Bật tắt tên đường" aria-pressed="true" title="Bật/tắt tên đường trên ảnh vệ tinh"><span>Aa</span><small>Đường</small></button><button id="rotBtn" type="button" aria-label="Xoay bản đồ, la bàn" title="Chạm: bật/tắt chế độ xoay · Chạm đúp: về hướng Bắc · Ctrl+con lăn: xoay"><svg id="rotNeedle" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11.5" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.2"/><path d="M13 3.5 17 13H9z" fill="#ff5252"/><path d="M13 22.5 9 13h8z" fill="#fff"/></svg><small id="rotTxt">Xoay</small></button></div>
   <div id="empty"><div>Bấm <b>Mở</b> để chọn file <b>KMZ, KML, DWG, DXF, DGN</b> trong điện thoại.</div><button id="emptyOpen">📁 Mở KMZ / CAD</button></div>
   <div id="measureBar" hidden>
-    <div id="mText">Kéo bản đồ cho vòng tròn trùng điểm đầu, rồi bấm Đặt điểm</div>
+    <div id="mText">Kéo dấu + đến đỉnh/giao điểm cần đo, rồi bấm Đặt điểm</div>
     <div class="btns"><button id="mAdd" class="main">＋ Đặt điểm</button><button id="mUndo">↩</button><button id="mClear">Xóa</button><button id="mDone">Xong</button></div>
   </div>
   <div id="sheet" hidden><div class="sh"><b id="shT"></b><button id="shX" aria-label="Đóng">✕</button></div><div id="shB"></div></div>
@@ -119,8 +126,10 @@ select.ktt{font-size:14px;padding:4px 6px;border-radius:6px;border:1px solid #b0
     <button id="bBase"><span class="i">🗺</span>Nền</button>
     <button id="bMeasure"><span class="i">📏</span>Đo</button>
     <button id="bGps"><span class="i">◎</span>GPS</button>
+    <button id="bTrack"><span class="i">🛣</span>Hành trình</button>
     <button id="bFit"><span class="i">⛶</span>Vừa</button>
   </div>
+  <div id="trackStatus" hidden>● Đang ghi hành trình · <span id="trackCount">0 điểm</span></div>
   <div id="toast"></div>
   <!-- Không dùng accept: Android/Zalo có thể làm mờ KMZ/DWG khi MIME không được nhận diện. Kiểm tra đuôi tệp trong openFiles(). -->
   <input type="file" id="file" multiple hidden>
@@ -214,6 +223,13 @@ const BASES=[
 let baseIdx=0, labelsOn=true, showNames=true, compactMarkers=true, kttId='105.75', hdOn=true;
 try{ const s=JSON.parse(localStorage.getItem('xemkmz2')||'{}'); const i=BASES.findIndex(x=>x.id===s.b); if(i>=0) baseIdx=i; if(typeof s.l==='boolean') labelsOn=s.l; if(typeof s.n==='boolean') showNames=s.n; if(typeof s.k==='string') kttId=s.k; if(typeof s.h==='boolean') hdOn=s.h; if(typeof s.cm==='boolean') compactMarkers=s.cm; if(['auto','on','off'].includes(s.v)) vcMode=s.v; }catch(e){}
 function savePrefs(){ try{ localStorage.setItem('xemkmz2',JSON.stringify({b:BASES[baseIdx].id,l:labelsOn,n:showNames,k:kttId,h:hdOn,cm:compactMarkers,v:vcMode})); }catch(e){} }
+
+/* Hai kinh tuyến trục VN-2000 do người dùng chọn: 105°45′ = 105.75°, không phải 105.45°. */
+if(kttId!=='105'&&kttId!=='105.75') kttId='105.75';
+function crsLabel(){ return kttId==='105'?'Đồng Tháp · 105°00′':'Tiền Giang · 105°45′'; }
+function updateCrsQuick(){ $('crsQuick').textContent='VN2000 · '+crsLabel(); }
+$('crsQuick').onclick=()=>{ kttId=kttId==='105'?'105.75':'105'; savePrefs(); updateCrsQuick(); if(!$('sheet').hidden) refresh(); if(measuring){ updateMeasure(); redraw(); } toast('Hệ VN2000: '+crsLabel()); };
+updateCrsQuick();
 
 /* ---------- VN2000 ⇄ WGS84 ----------
    Elipxoit WGS84; tham số 7 phép chuyển VN-2000 → WGS 84 theo EPSG:6960
@@ -777,7 +793,7 @@ async function handleCAD(file){
     if(result.warnings.length){const ok=await askCAD('Kiểm tra chuyển đổi',result.count.toLocaleString('vi')+' đối tượng · '+result.layers+' lớp. '+result.warnings.join('. ')+'. Tiếp tục lưu KMZ? Nếu dùng cho GPMB, cần đối chiếu bản vẽ gốc.',(b,done)=>b.append(el('button',{text:'Tiếp tục mở và lưu KMZ',onclick:()=>done(true)})));if(!ok)return;}
     const kmz=new File([api.zipKML(result.doc)],name+'.kmz',{type:'application/vnd.google-earth.kmz'});
     const imported=await importMapFiles([kmz]);if(!imported.ok)throw Error('Không mở được KMZ vừa tạo');
-    kttId=String(opt.k);savePrefs();success=true;cadHost.hidden=true;resize();redraw();toast('Đã chuyển '+result.count.toLocaleString('vi')+' đối tượng'+(imported.saved?' · đã lưu dự án':' · chưa lưu lâu dài; hãy tải KMZ'),6000);
+    kttId=String(opt.k);savePrefs();updateCrsQuick();success=true;cadHost.hidden=true;resize();redraw();toast('Đã chuyển '+result.count.toLocaleString('vi')+' đối tượng'+(imported.saved?' · đã lưu dự án':' · chưa lưu lâu dài; hãy tải KMZ'),6000);
   }catch(e){$('cadStatus').textContent=e.message;console.error(e);if(cadHost.hidden)toast(e.message,6000);else await askCAD('Thông báo',e.message,(b,done)=>b.append(el('button',{text:'Quay lại kiểm tra CAD',onclick:()=>done(true)})));}
   finally{cadBusy=false;if(!success&&!cadHost.hidden){await new Promise(resolve=>{cadExit=resolve;});}}
 }
@@ -1018,15 +1034,67 @@ function drawSelected(){
   }
   ctx.restore();
 }
+/* Bắt đỉnh và giao điểm đường KML ở gần tâm màn hình khi đo. */
+let snapMemo={t:0,key:'',result:null};
+function measureSnap(force=false){
+  const key=[view.cx,view.cy,view.z,view.rot,L.ln.length,L.pg.length,L.pt.length].join('/');
+  if(!force&&snapMemo.key===key) return snapMemo.result;
+  if(!force&&performance.now()-snapMemo.t<65) return snapMemo.result;
+  const radius=22,S=SC(), segs=[]; let best=null, vertex=null, point=null;
+  const put=(x,y,type,d)=>{ if(d<=radius&&(!best||d<best.d)) best={x,y,type,d}; };
+  function collect(m,closed){
+    if(segs.length>=180) return;
+    const n=m.length;
+    for(let k=2;k<n;k+=2){
+      const [x1,y1]=rotateXY((m[k-2]-view.cx)*S+W/2,(m[k-1]-view.cy)*S+H/2);
+      const [x2,y2]=rotateXY((m[k]-view.cx)*S+W/2,(m[k+1]-view.cy)*S+H/2);
+      if(Math.max(x1,x2)<W/2-radius||Math.min(x1,x2)>W/2+radius||Math.max(y1,y2)<H/2-radius||Math.min(y1,y2)>H/2+radius) continue;
+      segs.push([x1,y1,x2,y2]);
+      for(const [x,y] of [[x1,y1],[x2,y2]]){
+        const d=Math.hypot(x-W/2,y-H/2);
+        if(d<=radius&&(!vertex||d<vertex.d)) vertex={x,y,type:'đỉnh',d};
+      }
+      if(segs.length>=180) break;
+    }
+  }
+  const wx=view.cx,wy=view.cy,reach=radius/S;
+  /* Cho phép bắt trực tiếp vào cả các đối tượng Point trong KMZ/KML. */
+  for(const {p} of L.pt){
+    const mx=p.m[0],my=p.m[1];
+    if(Math.abs(mx-wx)>reach||Math.abs(my-wy)>reach) continue;
+    const [x,y]=rotateXY((mx-wx)*S+W/2,(my-wy)*S+H/2),d=Math.hypot(x-W/2,y-H/2);
+    if(d<=radius&&(!point||d<point.d)) point={x,y,type:'điểm',d};
+  }
+  for(const {p} of L.ln){ if(p.bb[2]<wx-reach||p.bb[0]>wx+reach||p.bb[3]<wy-reach||p.bb[1]>wy+reach) continue; collect(p.m,false); if(segs.length>=180) break; }
+  if(segs.length<180) for(const {p} of L.pg){ if(p.bb[2]<wx-reach||p.bb[0]>wx+reach||p.bb[3]<wy-reach||p.bb[1]>wy+reach) continue; for(const r of p.rings){ collect(r.m,true);if(segs.length>=180) break; } if(segs.length>=180) break; }
+  /* Ưu tiên giao cắt hai đoạn thẳng, sau đó tới đỉnh. */
+  for(let i=0;i<segs.length;i++){
+    const [ax,ay,bx,by]=segs[i],rx=bx-ax,ry=by-ay;
+    for(let j=i+1;j<segs.length;j++){
+      const [cx,cy,dx,dy]=segs[j],sx=dx-cx,sy=dy-cy,den=rx*sy-ry*sx;
+      if(Math.abs(den)<1e-8) continue;
+      const px=cx-ax,py=cy-ay,t=(px*sy-py*sx)/den,u=(px*ry-py*rx)/den;
+      if(t<0||t>1||u<0||u>1) continue;
+      const x=ax+t*rx,y=ay+t*ry,d=Math.hypot(x-W/2,y-H/2);
+      if(d<radius&&(!best||d<best.d)) best={x,y,type:'giao',d};
+    }
+  }
+  const item=best||((point&&vertex)?(point.d<=vertex.d?point:vertex):(point||vertex));
+  const [ux,uy]=item?unrotate(item.x,item.y):[W/2,H/2];
+  const result=item?{...item,lon:LON(view.cx+(ux-W/2)/S),lat:LAT(view.cy+(uy-H/2)/S)}:null;
+  snapMemo={t:performance.now(),key,result}; return result;
+}
 /* đo đạc */
 let measuring=false, mpts=[];
 function measureInfo(){
-  const c=[LON(view.cx),LAT(view.cy)], n=mpts.length/2;
+  const snap=measuring?measureSnap():null;
+  const c=snap?[snap.lon,snap.lat]:[LON(view.cx),LAT(view.cy)], n=mpts.length/2;
   const seg=n>=1?hav(mpts[mpts.length-2],mpts[mpts.length-1],c[0],c[1]):0;
   const tot=(n>=2?pathLen(mpts,false):0)+seg;
   const pts=mpts.concat(c);
   const area=pts.length>=6?ringArea(pts):0, per=pts.length>=6?pathLen(pts,true):0;
-  return {c,n,seg,tot,area,per,pts};
+  const vn=snap?wgsToVn(c[1],c[0]):null; /* VN-2000: [X bắc, Y đông], theo KTT đang chọn */
+  return {c,n,seg,tot,area,per,pts,snap,vn};
 }
 function drawMeasure(){
   if(!measuring) return;
@@ -1037,15 +1105,24 @@ function drawMeasure(){
     ctx.beginPath(); trace(m,false); ctx.lineWidth=3; ctx.strokeStyle='#ff6d00'; ctx.stroke();
     for(let i=0;i<m.length-2;i+=2){ const [x,y]=pxOf(m[i],m[i+1]); ctx.beginPath(); ctx.arc(x,y,6,0,2*PI); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle='#ff6d00'; ctx.stroke(); }
   }
-  /* vòng tròn cố định giữa màn hình */
-  ctx.lineWidth=4; ctx.strokeStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,11,0,2*PI); ctx.stroke();
-  ctx.lineWidth=2; ctx.strokeStyle='#ff6d00'; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx-18,cy); ctx.lineTo(cx-6,cy); ctx.moveTo(cx+6,cy); ctx.lineTo(cx+18,cy); ctx.moveTo(cx,cy-18); ctx.lineTo(cx,cy-6); ctx.moveTo(cx,cy+6); ctx.lineTo(cx,cy+18); ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx,cy,1.8,0,2*PI); ctx.fillStyle='#ff6d00'; ctx.fill();
-  /* số đo hiện ngay tại điểm kéo */
-  const lines=[]; if(I.n>=1){ lines.push('Đoạn '+fmtLen(I.seg)); if(I.n>=2) lines.push('Tổng '+fmtLen(I.tot)); if(I.pts.length>=6) lines.push('S = '+I.area.toFixed(1)+' m²'); }
-  ctx.font='700 14px system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=4; ctx.lineJoin='round';
-  lines.forEach((t,i)=>{ const x=cx+22, y=cy-26-(lines.length-1-i)*18; ctx.strokeStyle='rgba(0,0,0,.8)'; ctx.strokeText(t,x,y); ctx.fillStyle=i===0?'#ffcc80':'#fff'; ctx.fillText(t,x,y); });
+  /* Dấu cộng bắt điểm: 16 px CSS (4 lần kích thước 4 px ở bản V4), vẫn nét mảnh. */
+  const tx=I.snap?I.snap.x:cx, ty=I.snap?I.snap.y:cy;
+  const crossHalf=8;
+  ctx.beginPath(); ctx.moveTo(tx-crossHalf,ty);ctx.lineTo(tx+crossHalf,ty);
+  ctx.moveTo(tx,ty-crossHalf);ctx.lineTo(tx,ty+crossHalf);
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.stroke();
+  ctx.lineWidth=.9; ctx.strokeStyle=I.snap?'#00e5ff':'#ff6d00'; ctx.stroke();
+  if(I.snap){ ctx.font='600 11px system-ui,sans-serif';ctx.fillStyle='#00e5ff';ctx.fillText('Bắt '+I.snap.type,tx+12,ty-12); }
+  /* Kết quả màu vàng và X/Y VN-2000 của điểm đã bắt, theo múi chiếu được chọn. */
+  const lines=[];
+  if(I.n>=1){ lines.push('Đoạn '+fmtLen(I.seg)); if(I.n>=2) lines.push('Tổng '+fmtLen(I.tot)); if(I.pts.length>=6) lines.push('S = '+I.area.toFixed(1)+' m²'); }
+  if(I.snap&&I.vn){
+    if(!I.n) lines.push('Bắt '+I.snap.type);
+    lines.push('X: '+I.vn[0].toFixed(3)+' m');
+    lines.push('Y: '+I.vn[1].toFixed(3)+' m');
+  }
+  ctx.font='700 13px system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=4; ctx.lineJoin='round';
+  lines.forEach((t,i)=>{ const x=cx+22, y=cy-26-(lines.length-1-i)*18; ctx.strokeStyle='rgba(0,0,0,.8)'; ctx.strokeText(t,x,y); ctx.fillStyle=(i===0||t.startsWith('X:')||t.startsWith('Y:'))?'#ffcc80':'#fff'; ctx.fillText(t,x,y); });
   ctx.restore();
 }
 function drawPin(){
@@ -1113,7 +1190,7 @@ function draw(){
     drawTileLayer(b,true,(hdOn&&b.hd&&DPR>1)?1:0);
     if(labelsOn&&b.lbl) drawTileLayer(b.lbl,false,0);
   }
-  drawOverlays(); drawVectorLayer(); drawPoints(); drawSelected(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); ctx.restore(); drawScale();
+  drawOverlays(); drawVectorLayer(); drawPoints(); drawSelected(); drawTrack(); drawMeasure(); if(measuring) updateMeasure(); drawPlaces(); drawPin(); drawGPS(); ctx.restore(); drawScale();
 }
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,3);
@@ -1187,10 +1264,9 @@ function showFeature(sel){
   });
 }
 function kttSelect(onchange){
-  const s=el('select',{class:'ktt',onchange:()=>{ kttId=s.value; savePrefs(); onchange(); }});
-  for(let v=102;v<=108.5001;v+=0.25){ const id=String(v); s.append(el('option',{value:id,text:degDM(v)+(KTT_NOTE[id]?' – '+KTT_NOTE[id]:'')})); }
-  s.append(el('option',{value:'6:105',text:"Múi 6° – 105° (k = 0,9996)"}));
-  s.append(el('option',{value:'6:111',text:"Múi 6° – 111° (k = 0,9996)"}));
+  const s=el('select',{class:'ktt',onchange:()=>{ kttId=s.value; savePrefs(); updateCrsQuick(); if(measuring) updateMeasure(); onchange(); }});
+  s.append(el('option',{value:'105.75',text:'Tiền Giang – 105°45′ (múi 3°)'}));
+  s.append(el('option',{value:'105',text:'Đồng Tháp – 105°00′ (múi 3°)'}));
   s.value=kttId; if(s.value!==kttId){ kttId='105.75'; s.value=kttId; }
   return s;
 }
@@ -1204,8 +1280,8 @@ function vnBlock(b,lat,lon){
 let PL=[]; try{ PL=JSON.parse(localStorage.getItem('xemkmz_places')||'[]').filter(a=>a&&isFinite(a.lat)&&isFinite(a.lon)); }catch(e){ PL=[]; }
 let plRen=null, plDel=null;
 function savePlaces(){ try{ localStorage.setItem('xemkmz_places',JSON.stringify(PL)); }catch(e){} }
-function addPlace(lat,lon,title){
-  const pl={id:'l'+Date.now().toString(36),name:(title&&title!=='Vị trí đã chọn')?title:'Vị trí '+(PL.length+1),lat,lon,t:Date.now()};
+function addPlace(lat,lon,title,note=''){
+  const pl={id:'l'+Date.now().toString(36),name:(title&&title!=='Vị trí đã chọn')?title:'Vị trí '+(PL.length+1),lat,lon,note,t:Date.now()};
   PL.push(pl); savePlaces(); redraw(); toast('Đã lưu vị trí'); return pl;
 }
 function drawPlaces(){
@@ -1239,6 +1315,7 @@ function pointSheet(lat,lon,title,pl){
   openSheet(pl?pl.name:(title||'Vị trí đã chọn'),b=>{
     b.append(kv('WGS84 (vĩ, kinh)',fmtCoord(lat,lon)));
     const vnTxt=vnBlock(b,lat,lon);
+    if(pl&&pl.note) b.append(el('div',{class:'desc',text:'Ghi chú: '+pl.note}));
     const bt=el('div',{class:'btns'});
     if(!pl) bt.append(el('button',{class:'save',text:'📍 Lưu vị trí',onclick:()=>{ pin=null; showPlace(addPlace(lat,lon,title)); }}));
     bt.append(el('a',{href:dirUrl(lat,lon),target:'_blank',rel:'noopener noreferrer',text:'🧭 Chỉ đường'}));
@@ -1247,6 +1324,7 @@ function pointSheet(lat,lon,title,pl){
     bt.append(el('button',{class:'gray',text:'Chép VN2000',onclick:()=>copyText(vnTxt)}));
     bt.append(el('a',{href:gmUrl(lat,lon),target:'_blank',rel:'noopener noreferrer',text:'Mở Google Maps'}));
     if(pl){
+      bt.append(el('button',{class:'gray',text:'✎ Sửa ghi chú',onclick:()=>openNoteEditor(pl.lat,pl.lon,pl)}));
       if(plRen===pl.id){
         const inp=el('input',{type:'text',class:'plIn',value:pl.name,maxlength:'120',enterkeyhint:'done'});
         const ok=()=>{ const v=inp.value.trim(); if(!v){ toast('Tên không được để trống'); return; } pl.name=v; plRen=null; savePlaces(); redraw(); showPlace(pl); toast('Đã đổi tên'); };
@@ -1266,11 +1344,37 @@ function pointSheet(lat,lon,title,pl){
 function showPin(lat,lon,title){ pin={lat,lon}; selected=null; redraw(); pointSheet(lat,lon,title,null); }
 function showPlace(pl){ pin=null; selected=null; plRen=plDel=null; redraw(); pointSheet(pl.lat,pl.lon,pl.name,pl); }
 
+/* ---------- Nhấn giữ: chỉ có 2 thao tác, không truy vấn thông tin hình học. ---------- */
+function openNoteEditor(lat,lon,pl=null){
+  closeSheet();
+  openSheet(pl?'Sửa đánh dấu và ghi chú':'Đánh dấu và ghi chú',b=>{
+    const name=el('input',{class:'plIn',type:'text',maxlength:'120',placeholder:'Tên điểm đánh dấu',value:pl?pl.name:'Điểm ghi chú '+(PL.length+1)});
+    const note=el('textarea',{class:'plIn',rows:'4',placeholder:'Nhập nội dung ghi chú...',style:'min-height:100px;resize:vertical'});
+    note.value=pl&&pl.note||'';
+    b.append(name,note,el('div',{class:'btns'},
+      el('button',{text:'📍 Lưu đánh dấu',onclick:()=>{
+        const nm=name.value.trim()||'Ghi chú '+(PL.length+1);
+        if(pl){ pl.name=nm; pl.note=note.value.trim(); savePlaces(); showPlace(pl); }
+        else { const added=addPlace(lat,lon,nm,note.value.trim()); showPlace(added); }
+      }}),el('button',{class:'gray',text:'Hủy',onclick:closeSheet})));
+    b.append(el('div',{class:'cnt',text:'Tọa độ WGS84: '+fmtCoord(lat,lon)+' · VN2000: '+crsLabel()}));
+  });
+}
+function longPressMenu(x,y){
+  const [wx,wy]=s2w(x,y),lat=LAT(wy),lon=LON(wx);
+  selected=null; pin=null; redraw();
+  openSheet('Chọn thao tác tại vị trí',b=>{
+    b.append(el('div',{class:'btns'},
+      el('button',{text:'📍 Đánh dấu & ghi chú text',onclick:()=>openNoteEditor(lat,lon)}),
+      el('button',{text:'🧭 Chỉ đường',onclick:()=>{ window.open(dirUrl(lat,lon),'_blank','noopener,noreferrer'); closeSheet(); }})));
+  });
+}
 /* ---------- Bảng lớp ---------- */
 function showLayers(){
   openSheet('Lớp dữ liệu',b=>{
     b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:showNames,onchange:e=>{ showNames=e.target.checked; VC=null; PTC=null; savePrefs(); redraw(); }}),el('span',{text:'Hiện tên điểm (tự ẩn khi quá dày)'}))));
     b.append(el('div',{class:'row'},el('label',{},el('input',{type:'checkbox',checked:compactMarkers,onchange:e=>{ compactMarkers=e.target.checked; PTC=null; clearTimeout(ptTimer); savePrefs(); redraw(); }}),el('span',{text:'Giảm chồng lấn vòng tròn/điểm (khuyên dùng)'}))));
+    b.append(el('div',{class:'row'},el('span',{text:'VN-2000:'}),kttSelect(()=>{updateCrsQuick();if(measuring)updateMeasure();refresh();})));
     const vs=el('select',{class:'ktt',onchange:()=>{ vcMode=vs.value; VC=null; PTC=null; if(vcMode!=='auto') heavy=false; savePrefs(); rebuild(); }});
     for(const [v,t] of [['auto','Tự động (file nặng thì bật)'],['on','Luôn bật'],['off','Tắt']]) vs.append(el('option',{value:v,text:t}));
     vs.value=vcMode;
@@ -1321,12 +1425,21 @@ function showBase(){
 function updateMeasure(){
   const t=$('mText'); if(!measuring) return;
   const I=measureInfo(); let txt;
-  if(!I.n) txt='Kéo bản đồ cho vòng tròn trùng điểm đầu, rồi bấm Đặt điểm';
-  else { txt='Đoạn đang kéo: '+fmtLen(I.seg)+(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'');
-    if(I.pts.length>=6) txt+='\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area); }
+  if(!I.n) txt='Di chuyển dấu + đến điểm cần đo (tự bắt giao/đỉnh), rồi bấm Đặt điểm';
+  else {
+    txt='Đoạn đang kéo: '+fmtLen(I.seg)+(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'');
+    if(I.pts.length>=6) txt+='\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area);
+  }
+  if(I.snap&&I.vn){
+    /* X = tọa độ Bắc, Y = tọa độ Đông; dùng KTT Tiền Giang hoặc Đồng Tháp đang chọn. */
+    const pos='X: '+I.vn[0].toFixed(3)+' m · Y: '+I.vn[1].toFixed(3)+' m';
+    txt= 'Đoạn đang kéo: '+fmtLen(I.seg)+'\n'+pos+'\nĐã bắt '+I.snap.type+' · '+crsLabel()
+      +(I.n>=2?'\nTổng chiều dài: '+fmtLen(I.tot):'')
+      +(I.pts.length>=6?'\nChu vi (nếu khép kín): '+fmtLen(I.per)+'\nDiện tích: '+fmtArea(I.area):'');
+  }
   if(t.textContent!==txt){ t.style.whiteSpace='pre-line'; t.textContent=txt; }
 }
-function addMeasurePoint(){ mpts.push(LON(view.cx),LAT(view.cy)); updateMeasure(); redraw(); }
+function addMeasurePoint(){ const snap=measureSnap(true);mpts.push(snap?snap.lon:LON(view.cx),snap?snap.lat:LAT(view.cy)); updateMeasure(); redraw(); }
 function setMeasure(on){
   measuring=on; $('measureBar').hidden=!on; $('bMeasure').classList.toggle('on',on);
   if(on){ closeSheet(); mpts=[]; updateMeasure(); }
@@ -1356,6 +1469,104 @@ $('fsBtn').onclick=()=>setFS(true);
 document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&fs) setFS(false); });
 window.addEventListener('popstate',()=>{ if(fs){ fs=false; $('app').classList.remove('fs'); try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){} setTimeout(resize,60); } });
 
+/* ---------- Ghi hành trình GPS thành dự án KMZ ---------- */
+let trackRecording=false, trackPaused=false, trackPoints=[], trackStart=0;
+function xmlEscape(v){ return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c])); }
+function zipStoreKml(kml){
+  /* Một tệp doc.kml trong ZIP, method 0 (store), tương thích bộ đọc KMZ hiện có. */
+  const enc=new TextEncoder(), name=enc.encode('doc.kml'), data=enc.encode(kml);
+  const table=new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1); table[n]=c>>>0; }
+  let crc=0xffffffff; for(let i=0;i<data.length;i++) crc=table[(crc^data[i])&255]^(crc>>>8); crc=(crc^0xffffffff)>>>0;
+  const local=new Uint8Array(30+name.length+data.length), l=new DataView(local.buffer);
+  l.setUint32(0,0x04034b50,true); l.setUint16(4,20,true); l.setUint16(6,0x0800,true);
+  l.setUint16(8,0,true); l.setUint32(14,crc,true); l.setUint32(18,data.length,true); l.setUint32(22,data.length,true);
+  l.setUint16(26,name.length,true); local.set(name,30); local.set(data,30+name.length);
+  const central=new Uint8Array(46+name.length),c=new DataView(central.buffer);
+  c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(8,0x0800,true);
+  c.setUint16(10,0,true); c.setUint32(16,crc,true); c.setUint32(20,data.length,true); c.setUint32(24,data.length,true);
+  c.setUint16(28,name.length,true); central.set(name,46);
+  const end=new Uint8Array(22),e=new DataView(end.buffer);
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,1,true); e.setUint16(10,1,true);
+  e.setUint32(12,central.length,true); e.setUint32(16,local.length,true);
+  return new Blob([local,central,end],{type:'application/vnd.google-earth.kmz'});
+}
+function drawTrack(){
+  if(trackPoints.length<2) return;
+  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.beginPath();
+  let first=true,lastx=0,lasty=0;
+  for(let i=0;i<trackPoints.length;i++){
+    const p=trackPoints[i], [x,y]=pxOf(MX(p.lon),MY(p.lat));
+    if(!first&&i!==trackPoints.length-1&&Math.hypot(x-lastx,y-lasty)<1.5) continue;
+    if(first){ctx.moveTo(x,y);first=false;} else ctx.lineTo(x,y);
+    lastx=x;lasty=y;
+  }
+  ctx.strokeStyle='rgba(5,26,35,.9)';ctx.lineWidth=6;ctx.stroke();
+  ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.stroke();
+  ctx.restore();
+}
+function trackLength(){ let m=0; for(let i=1;i<trackPoints.length;i++) m+=hav(trackPoints[i-1].lon,trackPoints[i-1].lat,trackPoints[i].lon,trackPoints[i].lat); return m; }
+function trackSample(p){
+  if(!trackRecording||trackPaused) return;
+  const {latitude:lat,longitude:lon,accuracy:acc}=p.coords;
+  if(!isFinite(lat)||!isFinite(lon)||!isFinite(acc)||acc>100) return;
+  const prev=trackPoints[trackPoints.length-1];
+  /* Lọc jitter GPS 3m, không chỉnh tọa độ gốc. Giữ điểm mới theo mốc thời gian 30s. */
+  if(prev&&hav(prev.lon,prev.lat,lon,lat)<3&&Date.now()-prev.t<30000) return;
+  trackPoints.push({lat,lon,acc,t:Date.now()});
+  if(trackPoints.length>20000){ trackRecording=false; trackPaused=true; toast('Hành trình quá dài; hãy lưu KMZ hiện tại.',5000); }
+  $('trackCount').textContent=trackPoints.length+' điểm · '+fmtLen(trackLength());
+  redraw();
+  if(curTitle==='Ghi hành trình'&&!$('sheet').hidden) refresh();
+}
+function updateTrackIndicator(){
+  $('trackStatus').hidden=!trackRecording;
+  $('bTrack').classList.toggle('on',trackRecording);
+  $('trackCount').textContent=trackPoints.length+' điểm · '+fmtLen(trackLength());
+}
+function startTrack(){
+  trackRecording=true; trackPaused=false; trackPoints=[]; trackStart=Date.now();
+  if(watchId===null) {gpsUserOff=false;startGPS(false);}
+  updateTrackIndicator(); toast('Đã bắt đầu ghi hành trình. Giữ trang đang chạy khi di chuyển.',4500); refresh();
+}
+function finishTrack(){ trackRecording=false;trackPaused=true;updateTrackIndicator();refresh(); }
+async function saveTrackAsProject(name){
+  if(trackRecording) finishTrack();
+  if(trackPoints.length<2){ toast('Cần ít nhất 2 vị trí GPS để lưu hành trình.',4500); return; }
+  name=(name||'Hành trình GPS').trim().slice(0,120)||'Hành trình GPS';
+  const coords=trackPoints.map(p=>p.lon.toFixed(8)+','+p.lat.toFixed(8)+',0').join(' ');
+  const first=trackPoints[0],last=trackPoints[trackPoints.length-1];
+  const kml=`<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlEscape(name)}</name><Style id="track"><LineStyle><color>ff00d5ff</color><width>4</width></LineStyle></Style><Placemark><name>${xmlEscape(name)}</name><description>${xmlEscape('Ghi GPS từ '+new Date(first.t).toLocaleString('vi-VN')+' đến '+new Date(last.t).toLocaleString('vi-VN')+'; '+trackPoints.length+' điểm; chiều dài '+fmtLen(trackLength()))}</description><styleUrl>#track</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark><Placemark><name>Bắt đầu</name><Point><coordinates>${first.lon},${first.lat},0</coordinates></Point></Placemark><Placemark><name>Kết thúc</name><Point><coordinates>${last.lon},${last.lat},0</coordinates></Point></Placemark></Document></kml>`;
+  const slug=name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,50);
+  const file=new File([zipStoreKml(kml)],(slug||'Hanh_trinh')+'_'+Date.now()+'.kmz',{type:'application/vnd.google-earth.kmz'});
+  await openFiles([file]);
+  const proj=PJ.find(p=>p.fname===file.name);
+  if(proj){ proj.name=name; const root=rootOf(proj); if(root) root.name=name; saveMeta(proj); }
+  trackPoints=[];trackStart=0;updateTrackIndicator();toast('Đã lưu hành trình thành dự án KMZ: '+name,4000);showProjects();
+}
+function showTrackPanel(){
+  openSheet('Ghi hành trình',b=>{
+    const len=fmtLen(trackLength()), count=trackPoints.length;
+    b.append(el('div',{class:'desc',text:'Trạng thái: '+(trackRecording?(trackPaused?'Tạm dừng':'Đang ghi GPS'):'Chưa ghi')+' · '+count+' điểm · '+len}));
+    const controls=el('div',{class:'btns'});
+    if(!trackRecording&&count===0) controls.append(el('button',{text:'▶ Bắt đầu ghi GPS',onclick:startTrack}));
+    if(trackRecording){
+      controls.append(el('button',{text:trackPaused?'▶ Tiếp tục':'⏸ Tạm dừng',onclick:()=>{trackPaused=!trackPaused;refresh();}}));
+      controls.append(el('button',{class:'gray',text:'■ Kết thúc',onclick:finishTrack}));
+    }
+    b.append(controls);
+    if(!trackRecording&&count>0){
+      const inp=el('input',{class:'plIn',type:'text',maxlength:'120',value:'Hành trình '+new Date(trackStart).toLocaleDateString('vi-VN')});
+      b.append(el('div',{class:'desc',text:'Đặt tên để lưu vào Thư mục dự án dạng KMZ:'}),inp);
+      b.append(el('div',{class:'btns'},el('button',{text:'💾 Lưu dự án KMZ',onclick:()=>saveTrackAsProject(inp.value)}),
+        el('button',{class:'gray',text:'Bỏ hành trình',onclick:()=>{trackPoints=[];trackStart=0;updateTrackIndicator();refresh();}})));
+    }
+    b.append(el('div',{class:'desc',text:'GPS được lấy theo chu kỳ hiển thị 3 giây. Hành trình cần trang đang hoạt động; khi ứng dụng chạy nền, Android có thể ngừng cấp tọa độ. Dự án KMZ được lưu trong bộ nhớ trình duyệt, có thể chia sẻ từ Thư mục dự án.'}));
+  });
+}
+$('bTrack').onclick=()=>{ if(curTitle==='Ghi hành trình'&&!$('sheet').hidden) closeSheet(); else showTrackPanel(); };
+
 /* ---------- GPS ---------- */
 const GPS_UPDATE_MS=3000; /* chỉ cập nhật vị trí hiển thị mỗi 3 giây; trình duyệt vẫn quản lý tần suất lấy GPS */
 let watchId=null, gpsUserOff=false, gpsWarned=false, gpsUpdateTimer=null, gpsPending=null, gpsLastUpdate=0;
@@ -1363,7 +1574,8 @@ function stopGPS(){
   if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
   if(gpsUpdateTimer!==null){ clearTimeout(gpsUpdateTimer); gpsUpdateTimer=null; }
   gpsPending=null; gpsLastUpdate=0;
-  gps=null; $('bGps').classList.remove('on'); redraw();
+  gps=null; if(trackRecording){trackRecording=false;trackPaused=true;updateTrackIndicator();toast('GPS đã ngừng. Hãy lưu hành trình đã ghi.',4500);}
+  $('bGps').classList.remove('on'); redraw();
 }
 function startGPS(auto){
   if(watchId!=null) return;
@@ -1372,6 +1584,7 @@ function startGPS(auto){
   $('bGps').classList.add('on'); if(!auto) toast('Đang lấy vị trí…');
   function showGPSPosition(p){
     gps={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy||20};
+    trackSample(p);
     if(first){ first=false;
       if(!auto||!roots.some(r=>r.on)) flyTo(MX(gps.lon),MY(gps.lat),Math.max(view.z,17)); /* tự chạy: chỉ kéo bản đồ về vị trí khi chưa mở file nào */
       if(!auto) toast('Vị trí ±'+Math.round(gps.acc)+' m. Bấm GPS lần nữa để về vị trí, bấm khi đang ở giữa để tắt.',4000); }
@@ -1411,6 +1624,8 @@ setTimeout(()=>{ if(!gpsUserOff&&watchId==null) startGPS(true); },3000); /* tự
 
 /* ---------- Cảm ứng ---------- */
 const ptrs=new Map(); let moved=false, sx0=0, sy0=0, pinch=null, tapTimer=0, lastTap={t:0,x:0,y:0};
+let holdTimer=null,holdFired=false;
+function cancelHold(){if(holdTimer!==null){clearTimeout(holdTimer);holdTimer=null;}}
 function startPinch(){ const [a,b]=[...ptrs.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,angle:Math.atan2(b.y-a.y,b.x-a.x),x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
 cv.addEventListener('pointerdown',e=>{
   cancelAnimationFrame(anim);
@@ -1418,14 +1633,15 @@ cv.addEventListener('pointerdown',e=>{
   if(document.activeElement===sIn) sIn.blur();
   try{ cv.setPointerCapture(e.pointerId); }catch(_){}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size===1){ moved=false; sx0=e.clientX; sy0=e.clientY; }
-  else { moved=true; if(ptrs.size===2) startPinch(); }
+  if(ptrs.size===1){ moved=false; holdFired=false; sx0=e.clientX; sy0=e.clientY;
+    cancelHold(); if(!measuring) holdTimer=setTimeout(()=>{holdTimer=null;if(ptrs.size===1&&!moved){holdFired=true;clearTimeout(tapTimer);longPressMenu(sx0,sy0);}},650);
+  }else{ cancelHold(); moved=true; if(ptrs.size===2) startPinch(); }
 });
 cv.addEventListener('pointermove',e=>{
   const p=ptrs.get(e.pointerId); if(!p) return;
   if(ptrs.size===1){
     if(!moved&&Math.hypot(e.clientX-sx0,e.clientY-sy0)<8) return;
-    moved=true;
+    moved=true; cancelHold();
     if(rotMode){
       const ax=W/2, ay=H/2; let da=Math.atan2(e.clientY-ay,e.clientX-ax)-Math.atan2(p.y-ay,p.x-ax);
       while(da>PI) da-=2*PI; while(da< -PI) da+=2*PI;
@@ -1434,7 +1650,7 @@ cv.addEventListener('pointermove',e=>{
     const S=SC(), a=-view.rot, dx=e.clientX-p.x,dy=e.clientY-p.y; view.cx-=(dx*Math.cos(a)-dy*Math.sin(a))/S; view.cy-=(dx*Math.sin(a)+dy*Math.cos(a))/S; clampView();
     p.x=e.clientX; p.y=e.clientY; redraw();
   } else if(ptrs.size===2){
-    p.x=e.clientX; p.y=e.clientY;
+    cancelHold(); p.x=e.clientX; p.y=e.clientY;
     const [a,b]=[...ptrs.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y)||1, mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
     const [ux,uy]=unrotate(pinch.x,pinch.y),S0=SC(), wx=view.cx+(ux-W/2)/S0, wy=view.cy+(uy-H/2)/S0;
     const angle=Math.atan2(b.y-a.y,b.x-a.x);
@@ -1446,18 +1662,21 @@ cv.addEventListener('pointermove',e=>{
   }
 });
 function endPtr(e,cancel){
+  cancelHold();
   const had=ptrs.has(e.pointerId); if(!had) return;
   const wasSingle=ptrs.size===1;
   ptrs.delete(e.pointerId);
-  if(wasSingle&&!moved&&!cancel) onTap(e.clientX,e.clientY);
+  if(wasSingle&&!moved&&!cancel&&!holdFired) onTap(e.clientX,e.clientY);
+  if(holdFired) holdFired=false;
   if(ptrs.size===1){ moved=true; const r=[...ptrs.values()][0]; sx0=r.x; sy0=r.y; }
   if(ptrs.size===2) startPinch();
 }
 cv.addEventListener('pointerup',e=>endPtr(e,false));
 cv.addEventListener('pointercancel',e=>endPtr(e,true));
+cv.addEventListener('contextmenu',e=>e.preventDefault());
 cv.addEventListener('wheel',e=>{ e.preventDefault(); if(e.ctrlKey||e.metaKey){ rotateAt(e.clientX,e.clientY,-e.deltaY*0.0035); return; } zoomAt(e.clientX,e.clientY,view.z-e.deltaY*0.0016); },{passive:false});
 function act(x,y){
-  if(measuring){ if(Math.hypot(x-W/2,y-H/2)<44) addMeasurePoint(); return; } /* chạm vào vòng tròn giữa màn hình cũng đặt được điểm */
+  if(measuring){ if(Math.hypot(x-W/2,y-H/2)<44) addMeasurePoint(); return; } /* Chạm gần dấu + giữa màn hình để đặt điểm */
   if(fs) return;
   const pl=hitPlace(x,y); if(pl){ showPlace(pl); return; }
   const h=hit(x,y);
@@ -1746,7 +1965,7 @@ if('launchQueue' in window){ try{ launchQueue.setConsumer(async p=>{ const fs=[]
 
 resize();
 restoreProjects().then(takeSharedFile,takeSharedFile);
-window.__xemkmz={buildCadKML,importMapFiles,getCAD,PJ,toggleProj,delProj,showProjects,drawNow:()=>{ ctx0.setTransform(1,0,0,1,0,0); draw(); },info:()=>({heavy,vcMode,hasVC:!!VC}),openFiles,view,roots,vnToWgs,wgsToVn,parseCoord,searchLocal:q=>searchLocal(q).map(r=>r.f.name)};
+window.__xemkmz={measureSnap,showTrackPanel,trackSample,zipStoreKml,saveTrackAsProject,trackStart:()=>startTrack(),trackStop:()=>finishTrack(),trackPoints:()=>trackPoints,openLongMenu:longPressMenu,buildCadKML,importMapFiles,getCAD,PJ,toggleProj,delProj,showProjects,drawNow:()=>{ ctx0.setTransform(1,0,0,1,0,0); draw(); },info:()=>({heavy,vcMode,hasVC:!!VC}),openFiles,view,roots,vnToWgs,wgsToVn,parseCoord,searchLocal:q=>searchLocal(q).map(r=>r.f.name)};
 })();
 </script>
 </body>
